@@ -1319,3 +1319,12 @@
   font-size: 0.6875rem;
   line-height: 1.4;
 }
+
+/* the brief: the box the whole page is built from */
+.prompt-box {
+  min-height: 210px;
+  font-size: 14.5px;
+  line-height: 1.62;
+  resize: vertical;
+}
+.prompt-box::placeholder { color: var(--t3); }

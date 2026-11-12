@@ -102,6 +102,48 @@ never settled was a build that never ended; it races a 600ms timer. And the pipe
 awaited a bare `requestAnimationFrame` to let React commit, which never fires in a
 background tab; it races a 250ms timer.
 
+### The third one: 300 seconds, and it was the measurement
+
+The model had one call. The animation was capped. And it still took five minutes, because
+the thing that was slow **was also the thing that prevented the deadline from firing.**
+
+`lineChunks()` split every text node into *one character per `getClientRects()` call*. On a
+modest page that is ~2,000 synchronous layout reflows; on a real one it is far more. Every
+one blocks the main thread, and **a blocked main thread cannot run the `setTimeout` that
+would fire the deadline**. So the 80-second budget was correct and unreachable at the same
+time. This is the lesson of the whole exercise: a timeout is only as good as the thread's
+willingness to yield.
+
+Three changes:
+
+- **Query count scales with lines, not characters.** A segment is probed as a whole; if it
+  is on one line, one query covered a thousand characters; if it straddles a break, it is
+  halved. 6,000 characters went from **1,202 queries to 98**, and the demo page from 513 to
+  315. Same output: 117 boxes, 61 texts.
+- **The walk is bounded** at 4,000 elements, and `snapshotHtml` takes the build deadline and
+  cannot outlive it.
+- **One frame is yielded** before measuring, so the caller's clock gets a turn and the
+  browser can finish the layout it is about to be asked about.
+
+`scripts/measure-test.mjs` asserts the query count and fails if it ever grows with the
+character count again.
+
+### The flow the user asked for: one prompt box, then a document
+
+Pick a kind → write the brief in one box → optionally attach a PDF → pick sections and a
+theme → build.
+
+The box *is* the brief. It is passed to the model verbatim, under a heading that tells the
+model it wins over generic advice, and it is capped at 6,000 characters rather than
+summarised. The per-kind questions are still there behind a disclosure for anyone who wants
+precision; they are no longer a wall between the user and the build, and nothing is
+required except the name and the box.
+
+PDF text is extracted in the tab by pdf.js, capped at 30 pages and 24 MB, and sent as
+`SOURCE DOCUMENT` material alongside the brief. Scans are detected and reported rather than
+silently producing nothing. The file never leaves the machine; only the words go into the
+request.
+
 ### The second 140 seconds: the animation ran on the wrong clock
 
 Even with one request, a build could still sit on screen for minutes. The cause was in

@@ -100,9 +100,10 @@ export default function BuildScreen() {
 
           setPhase('measuring');
           setNote('Measuring the page');
+          const demoDeadline = Date.now() + BUDGET_MS;
           const bp = await raceDeadline(
-            snapshotHtml(html, stageWidth()),
-            Date.now() + BUDGET_MS
+            snapshotHtml(html, stageWidth(), demoDeadline),
+            demoDeadline
           );
           if (cancelled) return;
           patch({ blueprint: bp });
@@ -207,7 +208,7 @@ export default function BuildScreen() {
         /* measure it, offscreen */
         setPhase('measuring');
         setNote('Measuring the page');
-        const bp = await raceDeadline(snapshotHtml(html, stageWidth()), deadline);
+        const bp = await raceDeadline(snapshotHtml(html, stageWidth(), deadline), deadline);
         if (cancelled) return;
         patch({ blueprint: bp });
 
