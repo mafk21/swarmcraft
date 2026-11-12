@@ -16,11 +16,22 @@ function stageWidth() {
 type Phase = 'writing' | 'choosing-theme' | 'measuring' | 'building' | 'done' | 'failed';
 
 export default function BuildScreen() {
-  const { kind, answers, chosenSections, themeMode, theme, accent, pdf, demo, patch, go, next } =
-    useApp();
+  const {
+    kind,
+    answers,
+    chosenSections,
+    themeMode,
+    theme,
+    accent,
+    pdf,
+    demo,
+    runId,
+    patch,
+    go,
+    next,
+  } = useApp();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const frameRef = useRef<HTMLIFrameElement>(null);
   const swarmRef = useRef<Swarm | null>(null);
 
   const [phase, setPhase] = useState<Phase>('writing');
@@ -33,12 +44,14 @@ export default function BuildScreen() {
   const [themeInfo, setThemeInfo] = useState<string | null>(null);
 
   const [html, setHtml] = useState<string>('');
-  const ranRef = useRef(false);
+  // which run has already been executed — StrictMode would otherwise fire the
+  // whole pipeline (and pay for two Gemini calls) in development
+  const ranFor = useRef<number | null>(null);
 
   /* ── the whole pipeline, once ─────────────────────────────────────────── */
   useEffect(() => {
-    if (ranRef.current) return;
-    ranRef.current = true;
+    if (ranFor.current === runId) return;
+    ranFor.current = runId;
 
     let cancelled = false;
 
@@ -187,12 +200,11 @@ export default function BuildScreen() {
 
     return () => {
       cancelled = true;
-      ranRef.current = false;
       swarmRef.current?.stop();
       swarmRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [runId]);
 
   /* ── controls ─────────────────────────────────────────────────────────── */
 
@@ -294,7 +306,6 @@ export default function BuildScreen() {
 
         <canvas ref={canvasRef} className="build-canvas" />
         <iframe
-          ref={frameRef}
           className={`build-frame${live ? ' live' : ''}`}
           srcDoc={html}
           title="Built site"

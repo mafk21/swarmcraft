@@ -4,7 +4,7 @@ import { ACCENTS } from '../../lib/spec';
 import { KIND_BRIEFS } from '../../lib/questions';
 
 export default function ThemeScreen() {
-  const { kind, themeMode, theme, accent, patch, next, back } = useApp();
+  const { kind, themeMode, theme, accent, patch, back } = useApp();
   if (!kind) return null;
 
   const suggested = KIND_BRIEFS[kind].themes;
@@ -101,7 +101,13 @@ export default function ThemeScreen() {
         </button>
         <div className="spacer" />
         <span className="note">Nine cursors will build this page in front of you.</span>
-        <button className="btn btn-primary" disabled={!ready} onClick={next}>
+        <button
+          className="btn btn-primary"
+          disabled={!ready}
+          onClick={() =>
+            patch({ runId: useApp.getState().runId + 1, spec: null, blueprint: null, step: 'build' })
+          }
+        >
           Build my page
         </button>
       </div>

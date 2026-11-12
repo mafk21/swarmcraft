@@ -47,6 +47,8 @@ type S = {
   busy: boolean;
   pdf: { name: string; pages: number; chars: number; text: string } | null;
   demo: boolean;
+  /** increments each time a build is requested; keys the build effect */
+  runId: number;
 
   go: (s: Step) => void;
   next: () => void;
@@ -71,6 +73,7 @@ const initial = {
   busy: false,
   pdf: null,
   demo: false,
+  runId: 0,
 };
 
 export const useApp = create<S>((set, get) => ({
@@ -93,5 +96,5 @@ export const useApp = create<S>((set, get) => ({
   setAnswer: (id, v) =>
     set((s) => ({ answers: { ...s.answers, [id]: v } })),
 
-  reset: () => set({ ...initial }),
+  reset: () => set({ ...initial, runId: get().runId + 1 }),
 }));
