@@ -1,7 +1,7 @@
 # swarmsmith — Build Plan
 
 **Status:** planning · **Date:** 2026-11-12 · **Build order:** frontend first
-**Platform:** Chrome extension (MV3) running as a full-tab local app
+**Platform:** **a locally-run desktop web app** — not an extension
 **AI:** one free Gemini API key · **Output:** a real website
 
 ---
@@ -163,31 +163,58 @@ Choreography rules derived from it:
 
 ### 4.3 Runtime shape
 
+A single locally-run app. No browser extension, no store, no background worker.
+
 ```
-┌──────────────── Full-tab app (chrome-extension://<id>/app.html) ────────────────┐
+┌──────────────── Local app  (http://localhost:5173) ────────────────────────────┐
 │  Funnel views:  Key → Kind → Questions → Features → Docs → Theme → Build        │
 │  Build view:    offscreen iframe (hidden)  +  canvas  +  cursor swarm + HUD     │
 │  Result view:   live iframe, export controls                                    │
 │                                                                                 │
-│  Modules:  spec.js · theme.js · render.js · snapshot.js · swarm.js · export.js  │
+│  Modules:  spec.ts · theme/ · render.ts · snapshot.ts · swarm/ · export.ts      │
 └───────────┬─────────────────────────────────────────────────────────────────────┘
-            │ fetch (SSE)
+            │ fetch (SSE) — direct from the browser to Google
    ┌────────▼─────────────────────┐
    │  Gemini API                  │
    │  generativelanguage…/v1beta  │
    └──────────────────────────────┘
 
-   chrome.storage.local — key, settings, intake, generated sites
+   IndexedDB — key, settings, intake, generated sites
    File System Access API — export to a local folder
 ```
 
-### 4.4 Why an extension, running as a full tab
+### 4.4 Why a local app (and not an extension)
 
-You want it to *be* an extension. But a wizard with a canvas, a PDF drop and an export needs room, and an MV3 **side panel** or **popup** is (a) too narrow, (b) killed on click-away in the popup's case, and (c) subject to service-worker eviction if work lives there.
+Because there is nothing for it to extend. Swarmsmith never reads the page
+you're browsing, never injects anything, never needs host permissions. It
+generates a site from an interview and builds it on its own canvas. An extension
+would be pure overhead:
 
-**Resolution:** the extension opens `app.html` as a **full tab** on first run and from the toolbar icon. You get extension distribution and identity, with a full-page app surface. All state lives in the tab and in `chrome.storage.local`; the service worker only opens the tab.
+| | Extension | Local app |
+|---|---|---|
+| Distribution | Store review, $5 fee, 1–5 days | `npm run dev` |
+| Permissions | Manifest, install warnings, `<all_urls>` fights | none |
+| Update cycle | Store re-review | refresh the page |
+| Reach | Chrome only | any modern browser |
+| Install friction | "Load unpacked" + developer mode | one command |
 
-Permissions stay tiny: `storage`, `activeTab`, `scripting`. **No `<all_urls>`** — nothing to review-flag, nothing to scare the user.
+**What a local app costs us:** the File System Access API is Chromium-only, so
+**Export works in Chrome/Edge and degrades to downloads in Firefox/Safari.** The
+generated site itself is plain HTML and runs everywhere. That is the only real
+tradeoff, and it is worth it.
+
+**Runtime:** a Vite dev server on `localhost`. Two modes:
+
+- **Dev** — `npm run dev`, hot reload, nothing to install.
+- **Packaged** — an Electron/Tauri wrapper *only if* you later want a
+  double-click `.app`/`.exe`. Not needed for v1, explicitly deferred. The app is
+  written so it never depends on Electron APIs; it stays a plain web app.
+
+**Consequence for the swarm engine:** every MV3 worry from the platform research
+disappears — no service-worker eviction, no 30-second idle kill, no 5-minute
+handler cap, no message-passing between contexts. The swarm is just a
+`requestAnimationFrame` loop in a page you control. This makes Phase 1
+significantly simpler than it would have been.
 
 ---
 
@@ -221,7 +248,7 @@ Seven steps. Each is a full screens-worth of spec: layout, states, copy, rules.
 └──────────────────────────────────────────────────────────────┘
 ```
 
-- Key stored in `chrome.storage.local` under `swarmsmith.key`, never in the bundle, never logged.
+- Key stored in **IndexedDB** under `swarmsmith.key`, never in the bundle, never logged.
 - "Test & save" makes one cheap call; reports latency and the resolved model name.
 - Failure states: invalid key · quota exhausted · network · unsupported model. Each with its own message, not a generic error.
 - The trust paragraph is not decoration — it's the single biggest objection to a local app holding a key. Address it on screen one.
@@ -523,16 +550,18 @@ All via the File System Access API — a real "Save to folder…" dialog, no ser
 
 | Layer | Choice | Why |
 |---|---|---|
-| Build | **WXT** | Vite-based, fast HMR, generates the MV3 manifest |
+| Build | **Vite** | Plain local dev server, fast HMR, zero extension packaging |
 | Language | **TypeScript** strict | `SiteSpec` is the contract; types enforce it |
 | UI | **React 19** | Funnel views are ordinary React. **The canvas is not React** — it's an imperative rAF engine |
 | Styling | **CSS custom properties** | A tool-like design system in ~400 lines of tokens |
 | State | **Zustand** | Small, no provider tree, fine with streaming |
+| Persistence | **IndexedDB** (via `idb`) | Runs, specs, the key, generated sites. No extension storage APIs |
 | Validation | **Zod** | Every model response and every blueprint crosses a trust boundary |
-| PDF | **pdf.js** | Runs entirely in the tab |
+| PDF | **pdf.js** | Runs entirely in the page — no upload |
 | Markdown | none needed | Output is structured spec, not prose |
 | Tests | **Vitest** + **Playwright** | Unit for spec/choreography, e2e for the build |
-| Export | **File System Access API** | Real folder writes, no server |
+| Export | **File System Access API** | Real folder writes; falls back to downloads on Firefox/Safari |
+| Packaging *(deferred)* | **Tauri** or **Electron** | Only if a double-click binary is ever wanted. Not v1 |
 
 **Rejected:** any component library (fights the tool aesthetic), Tailwind (tokens are clearer), canvas rendering for the swarm (we need real DOM text for crisp typing and *real* snapshotting).
 
@@ -560,7 +589,7 @@ src/
       tasks.ts              drag · type · pen · guide · duplicate · sweep
       audio.ts              procedural Web Audio
     export.ts               single file · folder · zip
-  content/                  pdf extraction (runs in-tab)
+  lib/pdf.ts                pdf extraction (runs in-page, no upload)
 ```
 
 ---
@@ -570,13 +599,17 @@ src/
 Each phase ends in something demonstrable. **The swarm build is proven at Phase 3, before most of the funnel exists** — because if the animation doesn't land, nothing else matters.
 
 ### Phase 0 — Groundwork (1 day)
-- Scaffold WXT + TS + React. Extension opens `app.html`.
+- Scaffold Vite + TS + React. `npm run dev` serves the app on `localhost`.
 - Tool design system (`tokens.css`): greys, one accent, type scale, 1px borders, 4px radii, grid.
 - Icon set (~24 glyphs, stroke, no emoji).
 - Static HTML for all seven funnel screens with hardcoded data.
 - **Demo:** click through the entire funnel, no logic.
 
 ### Phase 1 — The swarm engine (3 days) ← the risk, taken first
+
+Now that the app runs locally, this is a single `requestAnimationFrame` loop in
+one page — no service worker, no lifecycle races, no message passing. Three days
+is realistic rather than optimistic.
 - `swarm/engine.ts`, `cursors.ts`, `tasks.ts`, `audio.ts`.
 - **Hand-write one blueprint** (a hero + 3 cards + footer) and make the swarm build it beautifully: intro orbit, crosshair drags with size badges, typed text with caret, pen lines, ruler guides with snapping, ⌥-duplicates, media sweeps, flock outro.
 - HUD: Tour, 1×/2×/3×, sound, replay, stop.
@@ -639,6 +672,7 @@ P0 ──► P1 (swarm) ──► P2 (render/snapshot) ──► P3 (Gemini) ─
 | **Free-tier quota makes the demo stutter** | High | Bad live demo | Serialise Muse calls, cap at 4, cache generated specs, and offer **Replay** which costs zero tokens |
 | **Copy still reads like AI despite the guard** | Medium | Kills the "real" claim | Melpomene's veto + one retry + concrete-fact requirement; and we surface *her* rejections in a debug panel so we can tune |
 | **18 days is optimistic** | High | Slipped launch | Phases 0–3 (~8 days) already produce a real store from real questions. Everything after is kind coverage and polish |
+| **Dropping MV3 removes the hardest constraints** | — | **Schedule win** | No service-worker eviction, no 5-min handler cap, no cross-context messaging, no store review. Phase 1 is materially simpler than this plan originally assumed |
 | **Motion-credit / licensing** | Low | Reputational | Our own engine, built from publicly described choreography; credit Califa & Patel in About |
 | **Generated sites feel generic across kinds** | Medium | Product looks samey | 8 distinct themes × 13 section types × per-kind defaults; Melpomene requires per-kind specifics |
 | **PDF parsing fails on real-world files** | Medium | Broken promise | Text-only in v1, explicit error taxonomy, in-tab so no upload/privacy question |
@@ -654,7 +688,7 @@ P0 ──► P1 (swarm) ──► P2 (render/snapshot) ──► P3 (Gemini) ─
 
 A stranger can, with no instructions:
 
-1. Load the extension; it opens a full tab.
+1. Run `npm run dev` and see the app at `localhost:5173` — no extension, no install.
 2. Paste a free Gemini key; "Test & save" turns green with a latency figure.
 3. Choose **Store**, answer five questions, tick Pricing and Contact, skip docs.
 4. Let the theme be chosen for them, with a stated reason.
@@ -669,7 +703,7 @@ Non-negotiable:
 - No model-authored CSS — asserted by a test that fails if `spec.ts` output contains a `styles` field.
 - Export works offline, with no external requests.
 - Playwright green: full funnel, build completion, replay, export, reduced motion.
-- Manifest permissions: `storage`, `activeTab`, `scripting`. Nothing else.
+- Zero browser permissions, zero manifests, zero network calls except your own key's Gemini requests.
 
 ---
 
@@ -685,6 +719,6 @@ All three can be answered while Phase 0 runs.
 
 ## Appendix — supporting research
 
-- [`chrome-extension-field-guide.md`](./chrome-extension-field-guide.md) — MV3 lifecycle, permissions, messaging, security, packaging, store review.
+- [`chrome-extension-field-guide.md`](./chrome-extension-field-guide.md) — kept for reference on MV3 internals (much of it no longer applies now that this is a local app; see §4.4).
 - Reference product: **Swarm Rebuild** (`DhvanilPatel/swarm-cursors`), motion design by **Joel Califa** (`califa/swarm-site`).
 - Gemini API: `POST /v1beta/models/{model}:generateContent` and `:streamGenerateContent?alt=sse`.

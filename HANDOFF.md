@@ -11,12 +11,12 @@ was decided, what was *not* decided, and exactly where to start.
 
 ## 60-second summary
 
-We are building **swarmsmith**: a Chrome extension that generates a real
-website from a short interview, and then **builds it on screen with a swarm of
-animated design-tool cursors** — crosshair-dragged boxes, typed headlines, ruler
+We are building **swarmsmith**: a **locally-run desktop web app** that generates
+a real website from a short interview, and then **builds it on screen with a
+swarm of animated design-tool cursors** — crosshair-dragged boxes, typed headlines, ruler
 guides, option-dragged cards.
 
-The visual language is borrowed from **Swarm Rebuild** (a viral Oct-2026 Chrome
+The visual language is borrowed from **Swarm Rebuild** (a viral Oct-2026 browser
 extension by Dhvanil Patel, motion design by Joel Califa). That product is a
 *visual trick*: it snapshots a page that already exists and has cursors
 *re-enact* building it. Nothing is generated.
@@ -37,10 +37,10 @@ working site you can edit and export.
 |---|---|
 | `README.md` | Entry point, links |
 | **`docs/BUILD-PLAN.md`** | **The plan. Read this second.** |
-| `docs/chrome-extension-field-guide.md` | Platform research — MV3, permissions, messaging, security, store review |
+| `docs/chrome-extension-field-guide.md` | Platform research — mostly **historical now**: written when this was an extension. Still useful for browser-API notes |
 | `HANDOFF.md` | This file — state, decisions, where to start |
 
-That's all. No `package.json`, no `manifest.json`, no `src/`.
+That's all. No `package.json`, no `src/`, no build tooling.
 
 ---
 
@@ -48,12 +48,12 @@ That's all. No `package.json`, no `manifest.json`, no `src/`.
 
 | # | Decision | Rationale |
 |---|---|---|
-| 1 | **Chrome extension (MV3)**, not a Workspace Add-on | User's requirement. Opens as a **full tab** (`app.html`), not a popup/side panel — a wizard + canvas needs room |
+| 1 | **A locally-run web app.** NOT an extension. | User's explicit correction. `npm run dev` → `localhost`, or a packaged desktop build later. See plan §4.4 |
 | 2 | **Frontend first.** No backend, ever, for v1 | User's explicit instruction. Everything runs locally |
-| 3 | **One free Gemini API key**, entered by the user on first run | Never bundled. Stored in `chrome.storage.local` |
+| 3 | **One free Gemini API key**, entered by the user on first run | Never bundled. Stored in **IndexedDB** |
 | 4 | **The model never writes CSS** | It returns a JSON `SiteSpec` only. All styling comes from 8 hand-written theme token files. This is how "no AI patterns" is *guaranteed* rather than requested |
 | 5 | **Render → snapshot → rebuild** | Gemini spec → hidden iframe → DOM snapshot → cursors rebuild it → hand off live. Never animate the spec directly or the animation could lie |
-| 6 | **Permissions limited to** `storage`, `activeTab`, `scripting` | No `<all_urls>`. Avoids weeks of store review |
+| 6 | **Zero browser permissions, zero manifests** | Nothing to request, nothing to review. Chrome extension is **not** the delivery mechanism |
 | 7 | **PDF only** for documents in v1, parsed locally with pdf.js | User's choice. No upload, so no privacy question |
 | 8 | **Nine Muses** = nine named agent personas | Calliope plans; Erato reads docs; Euterpe writes copy; Urania does pricing/menus; Melpomene is the slop guard; Polyhymnia does a11y; Terpsichore does interaction; Thalia handles voice; Clio enforces consistency |
 
@@ -86,7 +86,7 @@ The plan defines 8 phases. **Two viable entry points** — the user was offered
 both and had not chosen when this handoff was written:
 
 ### Option A — Phase 0 (breadth first)
-Scaffold WXT + TypeScript + React, build the tool design system, and produce all
+Scaffold Vite + TypeScript + React, build the tool design system, and produce all
 seven funnel screens as **clickable static HTML** with hardcoded data.
 → You see the whole funnel fast. Risk: you may discover late that the animation
 doesn't land.
@@ -136,7 +136,7 @@ About screen. This is a legal and reputational requirement, not a nicety.
 
 - ❌ No model-authored CSS — a test should fail if `SiteSpec` ever contains a `styles` field.
 - ❌ No bundled API key. Ever.
-- ❌ No `<all_urls>`.
+- ❌ Not an extension — do not re-introduce a manifest, service worker, or store flow.
 - ❌ No sparkles / gradients / emoji icons anywhere in the UI.
 - ✅ Export must work offline with zero external requests.
 - ✅ `Replay` must rebuild from the cached Blueprint and cost zero tokens — it is
