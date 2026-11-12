@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../store';
 import { getApiKey } from '../../lib/db';
-import { buildSpec, pickTheme, GeminiError } from '../../lib/gemini';
+import { buildSite, pickTheme, GeminiError, type MuseReport } from '../../lib/gemini';
 import { renderDocument } from '../../lib/render';
 import { snapshotHtml } from '../../lib/blueprint';
 import { Swarm } from '../../lib/swarm';
@@ -43,6 +43,7 @@ export default function BuildScreen() {
   const [err, setErr] = useState<string | null>(null);
   const [themeInfo, setThemeInfo] = useState<string | null>(null);
   const [guardNotes, setGuardNotes] = useState<string[]>([]);
+  const [muses, setMuses] = useState<MuseReport[]>([]);
 
   const [html, setHtml] = useState<string>('');
   // which run has already been executed — StrictMode would otherwise fire the
@@ -110,7 +111,13 @@ export default function BuildScreen() {
           ...(pdf ? { __source: pdf.text } : {}),
         };
 
-        const { spec, repairs } = await buildSpec(key, kind, enriched);
+        const register = String(answers.tone ?? '');
+        const { spec, repairs } = await buildSite(key, kind, enriched, {
+          register,
+          wanted: chosenSections,
+          onMuse: (r) => setMuses((m) => [...m, r]),
+          withMuses: true,
+        });
         if (repairs.length) setGuardNotes(repairs);
         if (cancelled) return;
 
@@ -341,6 +348,35 @@ export default function BuildScreen() {
         </div>
 
         {/* status line while the model is working */}
+        {muses.length > 0 && phase !== 'done' && (
+          <div
+            style={{
+              position: 'absolute',
+              left: 20,
+              top: 16,
+              zIndex: 5,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 3,
+              fontFamily: 'var(--mono)',
+              fontSize: 10,
+              color: 'var(--t2)',
+              background: 'rgba(12,13,15,0.82)',
+              padding: '8px 10px',
+              borderRadius: 4,
+              border: '1px solid var(--l2)',
+              maxWidth: 300,
+            }}
+          >
+            {muses.map((m, i) => (
+              <div key={i}>
+                <span style={{ color: 'var(--t0)' }}>{m.muse}</span> · {m.role} ·{' '}
+                {m.changed ? m.notes.slice(0, 1).join('') : 'ok'}
+              </div>
+            ))}
+          </div>
+        )}
+
         {(phase === 'writing' || phase === 'choosing-theme' || phase === 'measuring') && (
           <div
             style={{

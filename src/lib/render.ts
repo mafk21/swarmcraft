@@ -7,7 +7,49 @@
    ========================================================================== */
 
 import type { Section, SiteSpec } from './spec';
+import { resolveHref } from './spec';
+
+/* ── images ──────────────────────────────────────────────────────────────── */
+
+/**
+ * Only two kinds of src are allowed: a file the user put in this project, or a
+ * page in this site. Anything else renders as an empty plate — a model cannot
+ * make the exported page call out to a remote host.
+ */
+function imageAttrs(src: string | undefined): string | null {
+  if (!src) return null;
+  if (src.startsWith('media:') || src.startsWith('pages/')) return src;
+  return null;
+}
+
+/** A plate: either the real image, or a drawn placeholder. Both hold the box. */
+function plate(
+  src: string | undefined,
+  alt: string | undefined,
+  cls: string,
+  label?: string
+): string {
+  const ok = imageAttrs(src);
+  if (ok) {
+    return `<div class="${cls} has-img"><img src="${esc(ok)}" alt="${esc(
+      alt ?? ''
+    )}" loading="lazy" decoding="async" /></div>`;
+  }
+  return `<div class="${cls}" aria-hidden="true">${
+    label ? `<span>${esc(label)}</span>` : ''
+  }</div>`;
+}
 import { THEMES, themeCss } from './themes';
+
+/** Set by renderDocument for the duration of a render. Section renderers read
+    it to resolve `page:` links, which only make sense in context. */
+let CTX: { index: number; exportMode: boolean; section: number; slugs?: string[] } = {
+  index: 0,
+  exportMode: false,
+  section: -1,
+};
+const link = (h: string): string =>
+  esc(resolveHref(h, CTX.index, CTX.exportMode, CTX.slugs));
 
 const esc = (s: string): string =>
   s
@@ -22,19 +64,23 @@ type R = (s: Section) => string;
 
 const hero: R = (s) => {
   if (s.type !== 'hero') return '';
-  return `<header class="sec hero">
+  const hasImage = !!imageAttrs(s.image?.src);
+  return `<header class="sec hero${hasImage ? ' hero-split' : ''}" data-sec="${CTX.section}">
   <div class="wrap">
-    ${s.eyebrow ? `<p class="eyebrow">${esc(s.eyebrow)}</p>` : ''}
-    <h1>${esc(s.headline)}</h1>
-    <p class="lede">${esc(s.sub)}</p>
-    ${s.cta ? `<a class="cta" href="${esc(s.cta.href)}">${esc(s.cta.label)}</a>` : ''}
+    <div class="hero-copy">
+      ${s.eyebrow ? `<p class="eyebrow">${esc(s.eyebrow)}</p>` : ''}
+      <h1>${esc(s.headline)}</h1>
+      <p class="lede">${esc(s.sub)}</p>
+      ${s.cta ? `<a class="cta" href="${link(s.cta.href)}">${esc(s.cta.label)}</a>` : ''}
+    </div>
+    ${hasImage ? `<div class="hero-art">${plate(s.image?.src, s.image?.alt, 'art')}</div>` : ''}
   </div>
 </header>`;
 };
 
 const features: R = (s) => {
   if (s.type !== 'features') return '';
-  return `<section class="sec" id="features">
+  return `<section class="sec" id="features" data-sec="${CTX.section}">
   <div class="wrap">
     <h2>${esc(s.heading)}</h2>
     <ul class="grid-3">
@@ -53,7 +99,7 @@ const features: R = (s) => {
 
 const pricing: R = (s) => {
   if (s.type !== 'pricing') return '';
-  return `<section class="sec alt" id="pricing">
+  return `<section class="sec alt" id="pricing" data-sec="${CTX.section}">
   <div class="wrap">
     <h2>${esc(s.heading)}</h2>
     <ul class="grid-${Math.min(s.tiers.length, 4)}">
@@ -78,14 +124,14 @@ const pricing: R = (s) => {
 
 const products: R = (s) => {
   if (s.type !== 'products') return '';
-  return `<section class="sec" id="products">
+  return `<section class="sec" id="products" data-sec="${CTX.section}">
   <div class="wrap">
     <h2>${esc(s.heading)}</h2>
     <ul class="grid-3 shop">
       ${s.items
         .map(
           (i) => `<li class="product">
-        <div class="swatch" aria-hidden="true"></div>
+        ${plate(i.image?.src, i.image?.alt, 'swatch')}
         <div class="product-row">
           <h3>${esc(i.name)}</h3>
           <span class="tag">${esc(i.price)}</span>
@@ -101,7 +147,7 @@ const products: R = (s) => {
 
 const testimonials: R = (s) => {
   if (s.type !== 'testimonials') return '';
-  return `<section class="sec alt" id="testimonials">
+  return `<section class="sec alt" id="testimonials" data-sec="${CTX.section}">
   <div class="wrap">
     <h2>${esc(s.heading)}</h2>
     <div class="grid-2">
@@ -122,7 +168,7 @@ const testimonials: R = (s) => {
 
 const faq: R = (s) => {
   if (s.type !== 'faq') return '';
-  return `<section class="sec" id="faq">
+  return `<section class="sec" id="faq" data-sec="${CTX.section}">
   <div class="wrap narrow">
     <h2>${esc(s.heading)}</h2>
     <dl class="faq">
@@ -139,17 +185,21 @@ const faq: R = (s) => {
 
 const about: R = (s) => {
   if (s.type !== 'about') return '';
-  return `<section class="sec" id="about">
-  <div class="wrap narrow">
-    <h2>${esc(s.heading)}</h2>
-    ${s.body.map((p) => `<p class="prose">${esc(p)}</p>`).join('\n    ')}
+  const hasImage = !!imageAttrs(s.image?.src);
+  return `<section class="sec${hasImage ? ' about-split' : ''}" id="about" data-sec="${CTX.section}">
+  <div class="wrap${hasImage ? '' : ' narrow'}">
+    <div class="about-copy">
+      <h2>${esc(s.heading)}</h2>
+      ${s.body.map((p) => `<p class="prose">${esc(p)}</p>`).join('\n      ')}
+    </div>
+    ${hasImage ? `<div class="about-art">${plate(s.image?.src, s.image?.alt, 'portrait')}</div>` : ''}
   </div>
 </section>`;
 };
 
 const menu: R = (s) => {
   if (s.type !== 'menu') return '';
-  return `<section class="sec alt" id="menu">
+  return `<section class="sec alt" id="menu" data-sec="${CTX.section}">
   <div class="wrap">
     <h2>${esc(s.heading)}</h2>
     <div class="menu-groups">
@@ -160,10 +210,9 @@ const menu: R = (s) => {
         <ul class="menu-list">
           ${g.items
             .map(
-              (i) => `<li>
-            <span class="dish">${esc(i.name)}${
-                i.note ? `<em class="note">${esc(i.note)}</em>` : ''
-              }</span>
+              (i) => `<li>${plate(i.image?.src, i.image?.alt, 'dish-img')}<span class="dish">${esc(
+                i.name
+              )}${i.note ? `<em class="note">${esc(i.note)}</em>` : ''}</span>
             <span class="dots" aria-hidden="true"></span>
             <span class="cost">${esc(i.price)}</span>
           </li>`
@@ -180,27 +229,58 @@ const menu: R = (s) => {
 
 const gallery: R = (s) => {
   if (s.type !== 'gallery') return '';
-  return `<section class="sec" id="gallery">
-  <div class="wrap">
-    ${s.heading ? `<h2>${esc(s.heading)}</h2>` : ''}
-    <ul class="gallery">
-      ${s.items
-        .map(
-          (i) => `<li class="frame">
-        <div class="plate" aria-hidden="true"></div>
+  const layout = s.layout ?? 'grid';
+
+  const items = s.items.map((i, n) => {
+    const span = i.span ? ` span-${i.span}` : '';
+    const first = n === 0 ? ' is-first' : '';
+    return `<li class="frame${span}${first}">
+      ${plate(i.image?.src, i.image?.alt, 'plate', i.title)}
+      <div class="frame-cap">
         <h3>${esc(i.title)}</h3>
         ${i.caption ? `<p>${esc(i.caption)}</p>` : ''}
-      </li>`
-        )
-        .join('\n      ')}
-    </ul>
+      </div>
+    </li>`;
+  });
+
+  /* Each layout is a different idea about what a gallery is for:
+       grid     — equal weight, catalogue
+       feature  — one large piece, the rest supporting
+       strip    — a horizontal run, scrollable on narrow screens
+       masonry  — varied heights, rhythm                                  */
+  if (layout === 'feature') {
+    const [first, ...rest] = items;
+    return `<section class="sec" id="gallery" data-sec="${CTX.section}">
+  <div class="wrap">
+    ${s.heading ? `<h2>${esc(s.heading)}</h2>` : ''}
+    <div class="gal-feature">
+      <ul class="gal-hero">${first}</ul>
+      <ul class="gal-rest">${rest.join('\n')}</ul>
+    </div>
+  </div>
+</section>`;
+  }
+
+  if (layout === 'strip') {
+    return `<section class="sec" id="gallery" data-sec="${CTX.section}">
+  <div class="wrap">
+    ${s.heading ? `<h2>${esc(s.heading)}</h2>` : ''}
+  </div>
+  <ul class="gal-strip">${items.join('\n')}</ul>
+</section>`;
+  }
+
+  return `<section class="sec" id="gallery" data-sec="${CTX.section}">
+  <div class="wrap">
+    ${s.heading ? `<h2>${esc(s.heading)}</h2>` : ''}
+    <ul class="gal-${layout === 'masonry' ? 'masonry' : 'grid'}">${items.join('\n')}</ul>
   </div>
 </section>`;
 };
 
 const stats: R = (s) => {
   if (s.type !== 'stats') return '';
-  return `<section class="sec strip">
+  return `<section class="sec strip" data-sec="${CTX.section}">
   <div class="wrap">
     <ul class="stats">
       ${s.items
@@ -218,11 +298,11 @@ const stats: R = (s) => {
 
 const cta: R = (s) => {
   if (s.type !== 'cta') return '';
-  return `<section class="sec">
+  return `<section class="sec" data-sec="${CTX.section}">
   <div class="wrap narrow center">
     <h2>${esc(s.heading)}</h2>
     ${s.sub ? `<p class="lede">${esc(s.sub)}</p>` : ''}
-    <a class="cta" href="${esc(s.action.href)}">${esc(s.action.label)}</a>
+    <a class="cta" href="${link(s.action.href)}">${esc(s.action.label)}</a>
   </div>
 </section>`;
 };
@@ -261,7 +341,7 @@ const contact: R = (s) => {
 
 const schedule: R = (s) => {
   if (s.type !== 'schedule') return '';
-  return `<section class="sec" id="schedule">
+  return `<section class="sec" id="schedule" data-sec="${CTX.section}">
   <div class="wrap">
     <h2>${esc(s.heading)}</h2>
     <div class="days">
@@ -400,12 +480,65 @@ blockquote footer{font-size:0.8125rem;color:var(--ink-2);letter-spacing:0.02em}
 .dots{flex:1;border-bottom:1px dotted var(--rule);transform:translateY(-3px)}
 .cost{font-variant-numeric:tabular-nums}
 
-/* gallery */
-.gallery{display:grid;gap:calc(var(--space)*3);grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+/* images */
+.has-img{overflow:hidden;position:relative}
+.has-img img{width:100%;height:100%;object-fit:cover;display:block}
+.art{aspect-ratio:4/3;background:var(--surface-alt);border:1px solid var(--rule);
+  border-radius:var(--radius);overflow:hidden}
+.portrait{aspect-ratio:3/4;background:var(--surface-alt);border:1px solid var(--rule);
+  border-radius:var(--radius);overflow:hidden}
 .plate{aspect-ratio:1;background:var(--surface-alt);border:1px solid var(--rule);
-  border-radius:var(--radius);margin-bottom:12px}
-.frame h3{font-size:0.9375rem}
+  border-radius:var(--radius);overflow:hidden;display:flex;align-items:flex-end}
+.plate span{padding:10px 12px;font-size:0.75rem;letter-spacing:0.08em;
+  text-transform:uppercase;color:var(--ink-2)}
+.dish-img{width:44px;height:44px;flex:none;border-radius:calc(var(--radius) + 2px);
+  overflow:hidden;background:var(--surface-alt);border:1px solid var(--rule)}
+.dish-img img{width:100%;height:100%;object-fit:cover;display:block}
+
+/* hero with a picture */
+.hero-split .wrap{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,0.9fr);
+  gap:calc(var(--space)*6);align-items:center}
+@media (max-width:760px){.hero-split .wrap{grid-template-columns:1fr}}
+
+/* about with a portrait */
+.about-split .wrap{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,0.6fr);
+  gap:calc(var(--space)*6);align-items:start}
+@media (max-width:760px){.about-split .wrap{grid-template-columns:1fr}}
+
+/* gallery: four compositions */
+.gal-grid{display:grid;gap:calc(var(--space)*3);
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.gal-masonry{columns:3;column-gap:calc(var(--space)*3)}
+@media (max-width:860px){.gal-masonry{columns:2}}
+@media (max-width:560px){.gal-masonry{columns:1}}
+.gal-masonry .frame{break-inside:avoid;margin-bottom:calc(var(--space)*3)}
+.gal-masonry .plate{aspect-ratio:auto;height:240px}
+.gal-masonry .frame.span-tall .plate{height:420px}
+.gal-masonry .frame.span-wide .plate{height:200px}
+
+.gal-feature{display:grid;gap:calc(var(--space)*3);
+  grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}
+@media (max-width:760px){.gal-feature{grid-template-columns:1fr}}
+.gal-hero .plate{aspect-ratio:16/11}
+.gal-rest{display:grid;gap:calc(var(--space)*3);grid-template-columns:1fr 1fr;align-content:start}
+.gal-rest .plate{aspect-ratio:1}
+.gal-rest .frame:first-child{grid-column:span 2}
+.gal-rest .frame:first-child .plate{aspect-ratio:2/1}
+.gal-rest .frame:nth-child(n+5){display:none}
+
+.gal-strip{display:flex;gap:calc(var(--space)*3);overflow-x:auto;padding:0 32px 8px;
+  scroll-snap-type:x mandatory;list-style:none;margin:0}
+.gal-strip .frame{flex:0 0 clamp(240px,32vw,380px);scroll-snap-align:start}
+.gal-strip .frame .plate{aspect-ratio:4/5}
+.gal-strip .frame.is-first .plate{aspect-ratio:4/5}
+
+/* frame chrome shared by all layouts */
+.frame h3{font-size:0.9375rem;margin-top:12px}
 .frame p{font-size:0.875rem;color:var(--ink-2);margin:4px 0 0}
+.frame .plate{margin-bottom:0}
+.frame-cap{padding-top:0}
+.gal-grid .frame.span-wide{grid-column:span 2}
+.gal-grid .frame.span-tall .plate{aspect-ratio:1/2}
 
 /* stats */
 .stats{display:grid;gap:calc(var(--space)*3);grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
@@ -442,11 +575,29 @@ blockquote footer{font-size:0.8125rem;color:var(--ink-2);letter-spacing:0.02em}
 
 /* ── document ────────────────────────────────────────────────────────────── */
 
-export function renderBody(spec: SiteSpec): string {
+export type RenderOpts = {
+  /** which page this is, for page: links */
+  index?: number;
+  /** true when writing files to disk rather than an in-app preview */
+  exportMode?: boolean;
+  /** export filenames by page index, so links point at real files */
+  slugs?: string[];
+};
+
+export function renderBody(spec: SiteSpec, opts: RenderOpts = {}): string {
+  const idx = opts.index ?? 0;
+  const href = (h: string) =>
+    esc(resolveHref(h, idx, opts.exportMode ?? false, opts.slugs));
+
   const navLinks = spec.nav.links
-    .map((l) => `<li><a href="${esc(l.href)}">${esc(l.label)}</a></li>`)
+    .map((l) => `<li><a href="${href(l.href)}">${esc(l.label)}</a></li>`)
     .join('');
-  const sections = spec.sections.map((s) => RENDERERS[s.type](s)).join('\n');
+  const sections = spec.sections
+    .map((sec, i) => {
+      CTX.section = i;
+      return RENDERERS[sec.type](sec);
+    })
+    .join('\n');
 
   return `<nav class="nav">
   <div class="wrap">
@@ -463,7 +614,13 @@ ${sections}
 </footer>`;
 }
 
-export function renderDocument(spec: SiteSpec): string {
+export function renderDocument(spec: SiteSpec, opts: RenderOpts = {}): string {
+  CTX = {
+    index: opts.index ?? 0,
+    exportMode: opts.exportMode ?? false,
+    section: -1,
+    slugs: opts.slugs,
+  };
   const theme = THEMES[spec.meta.theme];
   return `<!doctype html>
 <html lang="en">
@@ -478,7 +635,7 @@ ${SITE_CSS}
 </style>
 </head>
 <body id="top">
-${renderBody(spec)}
+${renderBody(spec, opts)}
 </body>
 </html>`;
 }

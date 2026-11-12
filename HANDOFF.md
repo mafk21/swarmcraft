@@ -42,8 +42,26 @@ The whole path works end to end:
 7. **Projects** — a real list: open, rename, delete (with confirmation). Saved sites
    reopen at the workbench, and saving updates in place instead of duplicating.
 8. **Result** — a workbench: live preview beside an inspector that edits every field of
-   every section type, plus theme, accent, brand, nav and footer. Add, duplicate, reorder
-   and remove sections. Export standalone HTML, replay the build from the edited page.
+   every section type, plus theme, accent, brand, nav and footer. Clicking a section in
+   the preview opens its card. Add, duplicate, reorder and remove sections. Bring your own
+   images (stored in IndexedDB, inlined on export). Up to six pages, exported as linked
+   `index.html` + per-page files. Replay the build from the edited page.
+
+## The Muses, actually doing things
+
+They are no longer labels on cursors. `buildSite()` in `gemini.ts` runs a conductor:
+
+| Muse | When | What it does |
+|---|---|---|
+| Calliope | first, deterministic | hero to the top, contact to the end, reports anything never produced |
+| draft | — | the section composition and copy |
+| slop guard | after the draft | one rewrite naming the exact banned phrases |
+| Clio | model | fixes contradictions in price, name and spelling; reports the fields it touched |
+| Thalia | model | rewrites copy that misses the requested register |
+| Polyhymnia | last, deterministic | alt text, "click here" buttons, heading presence |
+
+Each pass can fail without failing the build: the previous spec is kept and the report
+says so. The build HUD shows them live.
 
 ## The four ideas that make it work
 
@@ -88,25 +106,24 @@ pausing freezes it and changing speed changes the rate without jumping.
 
 ## Known gaps, in priority order
 
-1. **Never watched running.** No browser in the build sandbox (Playwright's Chromium
-   download fails, no system Chrome). The engine, renderer, editor and scheduler are
-   unit-tested headlessly, but no human has seen a frame of the canvas. First task on a
-   machine with a browser: open the demo build.
-2. **Landmarks land all at once.** Each step now gets a random stagger (700ms for boxes,
-   420ms for text), which spreads first-arrivals across ~6 of 9 lanes, but they still
-   converge more than they should. Raise the spread or bias the stagger by x-position.
-3. **The Muses are decoration.** Their names appear as cursor labels only. Sitemap,
-   voice, slop and a11y are still one monolithic call wearing nine costumes.
-4. **Kind-specific section shapes are generic.** Every kind renders from the same
-   thirteen section types. A store's product grid and a portfolio's gallery are the same
-   component.
-5. **Reduced motion.** `prefers-reduced-motion` is handled in the app's styles but not in
-   the engine — it should jump straight to the finished state.
-6. **Multi-page.** One page per site. The nav links are anchors, not routes.
-7. **No image upload.** Gallery and product sections use generated plates. There is no
-   way to bring your own photograph.
-8. **Editing is per-field, not on-canvas.** You edit in the inspector and the preview
-   re-renders. Clicking a headline in the preview does not focus its field.
+1. **The canvas has never been watched running.** There is no browser in the build
+   sandbox. Every piece of the engine is unit-tested headlessly and the whole app
+   typechecks and builds, but no human has seen a frame. This is the first thing to do.
+2. **The demo build is the fastest way in.** Key screen → "Watch the swarm with a sample
+   page". No network, no key.
+3. **Muse passes cost round trips.** Clio and Thalia are two extra Gemini calls. If the
+   free tier rate-limits, set `withMuses: false` in `buildSite()` and only Calliope and
+   Polyhymnia (both deterministic) will run.
+4. **Pages are not in the project store yet.** The workbench holds extra pages in memory;
+   only the current page is written by `saveProject()`. `savePage()`/`listPages()` exist
+   and are wired but the workbench does not call them yet.
+5. **Section shapes are still largely shared.** Kinds now get a prompt describing their
+   natural shape (see `KIND_SHAPES` in `gemini.ts`) and galleries have four
+   compositions, but every kind still draws from the same thirteen section types.
+6. **Images are data URLs in IndexedDB.** Fine for a handful of photographs; a gallery of
+   forty at 6 MB each will crawl. Move to blobs plus `URL.createObjectURL` if it bites.
+7. **No image cropping or focal point.** Portraits and gallery plates are `object-fit:
+   cover` with the centre of the frame.
 
 ## Non-negotiables
 
