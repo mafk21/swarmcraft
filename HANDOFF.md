@@ -63,20 +63,32 @@ They are no longer labels on cursors. `buildSite()` in `gemini.ts` runs a conduc
 Each pass can fail without failing the build: the previous spec is kept and the report
 says so. The build HUD shows them live.
 
-## Why it used to hang on "writing the page"
+## Why it used to hang, and why it was slow
 
-Gemini 2.5 Flash **thinks** by default, and thinking tokens are wall-clock. A
-structured 400-word page spent 20–60 seconds reasoning before emitting a character, on
-every call, three calls deep. `NO_THINKING` in `gemini.ts` sets
-`thinkingConfig: { thinkingBudget: 0 }` on all of them; the schema and the brief already
-constrain the answer, so the thinking bought nothing.
+Two separate faults, both fixed.
 
-Every request also has a hard 45-second ceiling now. A request that never resolves is
-worse than one that fails: the user has no information and no way out. And the build
-stage shows a real clock — elapsed, the typical time, where that typical sits on a bar,
-and the ceiling it will fail at, with a Stop button that aborts the request.
+**It was slow because there were three calls.** A draft, then Clio and Thalia as separate
+model passes. Each was a full round trip with a full schema, run one after another. Their
+instructions now live in the single system prompt as rules 7 (consistency) and 8 (voice),
+and the deterministic checks still run afterwards because they are free. **One call.**
 
-## The four ideas that make it work
+**Thinking.** Gemini 2.5 Flash reasons by default and thinking tokens are wall-clock with
+nothing to show. `NO_THINKING` sets `thinkingBudget: 0` on every call.
+
+**It hung because the timeout only covered the headers.** The old code cleared its timer as
+soon as `fetch` resolved, so a response that opened and then stalled its body waited
+forever — exactly what "reached the hard limit and nothing happened" was. One timer now
+spans fetch *and* body read, 40 seconds, and a timeout surfaces as a real error message
+rather than silence.
+
+The stage clock shows elapsed, the typical duration, where typical sits on the bar, and
+the ceiling it will fail at, with Stop.
+
+**Budget now:** one model call of roughly 5–12 seconds, then local work — a few hundred
+milliseconds to measure the DOM, and the build animation itself, which runs at 1× by
+default and can be skipped. Under a minute and a half for the whole funnel.
+
+## The four ideas that make it work## The four ideas that make it work
 
 **1. The model cannot write CSS.**
 Every object in the schema is `.strict()` — the spec, and all twenty-six nested objects

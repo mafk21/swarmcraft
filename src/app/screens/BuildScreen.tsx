@@ -27,7 +27,6 @@ export default function BuildScreen() {
     pdf,
     demo,
     runId,
-    reviewPasses,
     patch,
     go,
     next,
@@ -122,7 +121,6 @@ export default function BuildScreen() {
           wanted: chosenSections,
           onMuse: (r) => setMuses((m) => [...m, r]),
           onStage: (label) => setNote(label),
-          withMuses: reviewPasses,
           signal: ctl.signal,
         });
         if (repairs.length) setGuardNotes(repairs);
@@ -206,7 +204,9 @@ export default function BuildScreen() {
         setPhase('failed');
         setErr(
           e instanceof GeminiError
-            ? `Google said: ${e.message}`
+            ? e.status === 408
+              ? e.message
+              : `Google said: ${e.message}`
             : e instanceof Error
               ? e.message
               : 'Something went wrong.'
@@ -289,9 +289,16 @@ export default function BuildScreen() {
               {err}
             </div>
           </div>
+          <p className="tiny dim" style={{ lineHeight: 1.6 }}>
+            If this was a rate limit, waiting sixty seconds is usually enough. The free tier
+            allows a handful of requests per minute.
+          </p>
           <div className="row" style={{ gap: 8 }}>
             <button className="btn btn-primary" onClick={() => go('theme')}>
               Try again
+            </button>
+            <button className="btn btn-ghost" onClick={() => go('brief')}>
+              Change the brief
             </button>
             <button className="btn btn-ghost" onClick={() => go('key')}>
               Check the key
