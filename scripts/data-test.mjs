@@ -5,9 +5,8 @@
  *   node scripts/data-test.mjs
  */
 import { build } from 'esbuild';
+import { scratch } from './_scratch.mjs';
 import { writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 const bundle = await build({
   stdin: {
@@ -24,12 +23,13 @@ const bundle = await build({
     loader: 'ts',
   },
   bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'error',
-  outfile: '.tmp/data-test.mjs',
+  outfile: 'data-test.mjs',
 });
 
 // write beside node_modules so bare imports resolve, then import it for real
-writeFileSync('.tmp/data-test.mjs', bundle.outputFiles[0].text);
-const m = await import(pathToFileURL(resolve('.tmp/data-test.mjs')).href);
+const data_test_mjs = scratch('data-test.mjs');
+writeFileSync(data_test_mjs.path, bundle.outputFiles[0].text);
+const m = await import(data_test_mjs.url);
 
 let fail = 0;
 const ok = (name, cond, detail = '') => {

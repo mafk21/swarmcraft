@@ -9,9 +9,8 @@
  *   node scripts/budget-test.mjs
  */
 import { build } from 'esbuild';
+import { scratch } from './_scratch.mjs';
 import { writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 const b = await build({
   stdin: {
@@ -21,8 +20,9 @@ const b = await build({
   },
   bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'error',
 });
-writeFileSync('.tmp/budget.mjs', b.outputFiles[0].text);
-const { buildSite, buildSpec, BUDGET_MS } = await import(pathToFileURL(resolve('.tmp/budget.mjs')).href);
+const budget_mjs = scratch('budget.mjs');
+writeFileSync(budget_mjs.path, b.outputFiles[0].text);
+const { buildSite, buildSpec, BUDGET_MS } = await import(budget_mjs.url);
 
 let fail = 0;
 const ok = (name, cond, detail = '') => {

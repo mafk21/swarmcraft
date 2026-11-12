@@ -15,18 +15,18 @@
  *   node scripts/measure-test.mjs
  */
 import { build } from 'esbuild';
+import { scratch } from './_scratch.mjs';
 import { JSDOM } from 'jsdom';
 import { writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 const b = await build({
   stdin: { contents: `export { snapshot } from './src/lib/blueprint'; export { renderDocument } from './src/lib/render'; export { DEMO_SPEC } from './scripts/fixtures/sample-spec';`,
     resolveDir: process.cwd(), loader: 'ts' },
   bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'error',
 });
-writeFileSync('.tmp/measure.mjs', b.outputFiles[0].text);
-const { snapshot, renderDocument, DEMO_SPEC } = await import(pathToFileURL(resolve('.tmp/measure.mjs')).href);
+const measure_mjs = scratch('measure.mjs');
+writeFileSync(measure_mjs.path, b.outputFiles[0].text);
+const { snapshot, renderDocument, DEMO_SPEC } = await import(measure_mjs.url);
 
 let fail = 0;
 const ok = (name, cond, detail = '') => {

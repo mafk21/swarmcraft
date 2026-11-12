@@ -13,6 +13,7 @@
  */
 import { JSDOM } from 'jsdom';
 import { build } from 'esbuild';
+import { scratch } from './_scratch.mjs';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
