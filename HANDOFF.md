@@ -102,15 +102,47 @@ never settled was a build that never ended; it races a 600ms timer. And the pipe
 awaited a bare `requestAnimationFrame` to let React commit, which never fires in a
 background tab; it races a 250ms timer.
 
-**Thinking.** Gemini 2.5 Flash reasons by default and thinking tokens are wall-clock with
-nothing to show. `NO_THINKING` sets `thinkingBudget: 0` on the only call.
+### The second 140 seconds: the animation ran on the wrong clock
 
-**Budget now:** one model call (typically 5–15s, hard-capped at 25s or whatever is left),
-then local work — a few hundred milliseconds to measure the DOM, then the build animation,
-which runs at 1× by default, adapts its speed to what is left, and can be skipped.
-**80 seconds is the hard limit and `npm test` fails if it is raised above 90.**
+Even with one request, a build could still sit on screen for minutes. The cause was in
+`Swarm.tick`: frame deltas were clamped to 50ms and the scene clock was *accumulated* from
+them. A 60Hz machine advances 16ms a frame and everything is fine. A machine whose frame
+took 120ms advanced 50ms per frame — so the animation ran at roughly a quarter speed and
+a 27-second build silently took **114 seconds**. Measured, in `swarm-test.mjs`: at a 250ms
+frame rate the old code took 114,750ms for a 22,932ms build. That is the number the user
+counted.
 
-## The four ideas that make it work## The four ideas that make it work## The four ideas that make it work
+Frame time now affects how *smooth* the build looks and nothing else:
+
+- `wall` is real elapsed time since `play()`, minus paused spells. `clock = wall * speed`.
+  The scene is still deterministic in scene-time; the timeline is real.
+- `hardCapMs` is a promise, not a request. Speed is what we *ask* for and a slow machine may
+  not deliver it; the cap paints the finished page and calls `onDone` regardless. A build
+  cannot exceed it whatever the frame rate.
+- Boxes and lines are now culled vertically like text already was. Every box on a
+  6,000-pixel page used to be filled on every frame, on screen or not.
+
+### The policy lives in one place, and the test uses it
+
+`src/lib/timing.ts` decides speed and cap from (animation length, time spent, deadline).
+`BuildScreen` calls it. `timeline-test.mjs` **imports** it. The previous rounds restated
+the rule in the test, which is how a test can pass while the product fails.
+
+Measured end to end, real pipeline, stubbed network, frame clock driven by hand:
+
+| model takes | speed | drawing | page visible |
+|---|---|---|---|
+| 2s | 1.4× | 19.9s | **21.9s** |
+| 8s | 1.9× | 14.0s | **22.0s** |
+| 20s | 4.0× | 6.8s | **26.8s** |
+| 35s | 4.0× | 6.7s | **41.7s** |
+| 50s | 4.0× | 6.9s | **56.9s** |
+
+**Budget now:** one request, generous 55s ceiling so a slow-but-good answer is not thrown
+away, and 80s for the whole build. A normal build lands around 22 seconds. `npm test`
+fails if the budget is raised above 90 seconds.
+
+## The four ideas that make it work## The four ideas that make it work## The four ideas that make it work## The four ideas that make it work
 
 **1. The model cannot write CSS.**
 Every object in the schema is `.strict()` — the spec, and all twenty-six nested objects

@@ -7,6 +7,7 @@ import { snapshotHtml } from '../../lib/blueprint';
 import { Swarm } from '../../lib/swarm';
 import { StageClock } from '../StageClock';
 import { THEMES } from '../../lib/themes';
+import { planAnimation } from '../../lib/timing';
 
 /** The width the preview stage will really be, so measurements match the reveal. */
 function stageWidth() {
@@ -99,7 +100,10 @@ export default function BuildScreen() {
 
           setPhase('measuring');
           setNote('Measuring the page');
-          const bp = await snapshotHtml(html, stageWidth());
+          const bp = await raceDeadline(
+            snapshotHtml(html, stageWidth()),
+            Date.now() + BUDGET_MS
+          );
           if (cancelled) return;
           patch({ blueprint: bp });
 
@@ -116,6 +120,7 @@ export default function BuildScreen() {
           requestAnimationFrame(() => {
             swarm.play({
               speed: 1,
+              hardCapMs: 45_000,
               onProgress: (p) => setProgress(p),
               onDone: () => {
                 setPhase('done');
@@ -221,15 +226,21 @@ export default function BuildScreen() {
 
         // let one frame paint the blank page before the swarm starts
         /* The animation is part of the budget, not a bonus on the end of it.
-           A real page is ~27s of drawing at 1x; if the model used 50s we run at
-           a speed that still lands inside the 80s promise. Perceived as brisk,
-           not truncated — every step still happens, just faster. */
-        const left = Math.max(0, deadline - Date.now());
-        const buildSpeed = Math.max(1, Math.min(3, swarm.duration / Math.max(1, left - 1500)));
+           A real page is ~27s of drawing at 1x. If the model used 50s we ask
+           for a faster speed so it lands inside 80s — but speed alone is only a
+           request: a slow machine drops frames and falls behind whatever we ask
+           for. hardCapMs is the promise, and it paints the finished page and
+           hands over the moment the budget runs out. */
+        /* Two things to balance: a fast build must not be padded out to half a
+           minute, and a slow one must compress to keep the promise. The policy
+           lives in timing.ts so this screen and the timeline test agree. */
+        const plan = planAnimation(swarm.duration, startedAt, deadline);
+        const buildSpeed = plan.speed;
         setSpeed(buildSpeed);
         requestAnimationFrame(() => {
           swarm.play({
             speed: buildSpeed,
+            hardCapMs: plan.capMs,
             onProgress: (p) => setProgress(p),
             onDone: () => {
               setPhase('done');
@@ -303,6 +314,8 @@ export default function BuildScreen() {
       if (!s) return;
       s.play({
         speed,
+        // a replay is not the paid build; it still may not trap the user
+        hardCapMs: 45_000,
         onProgress: (p) => setProgress(p),
         onDone: () => {
           setPhase('done');

@@ -129,5 +129,67 @@ const beforeSpeed = s2.clock;
 }
 check('speed change scales the clock', s2.clock - beforeSpeed > 100, `${s2.clock - beforeSpeed}ms at 3x`);
 
+
+/* ── a slow machine must not stretch the build ───────────────────────────
+   The user's report was 140s with no website. The cause: dt was clamped to
+   50ms, so on a machine whose frames took longer than that the scene clock
+   fell behind and a 27s animation quietly ran for minutes. Frame time must
+   change how smooth the build looks, never how long it takes.             */
+{
+  const bp3 = makeBlueprint();
+  const s3 = new Swarm(canvas, bp3);
+
+  // a fake renderer that takes a long time per frame is not something we can
+  // simulate directly, but a slow FRAME RATE is: 200ms between ticks.
+  let ticks = 0;
+  let done = false;
+  let t = 0;
+  const fakeNow = () => t;
+  const origPerf = globalThis.performance;
+  globalThis.performance = { now: fakeNow };
+
+  s3.play({ speed: 1, hardCapMs: 5000, onDone: () => (done = true) });
+  // drive ticks by hand at 200ms apart, up to 12s of simulated time
+  for (let i = 0; i < 60 && !done; i++) {
+    t += 200;
+    ticks++;
+    s3.tick(t);
+  }
+  globalThis.performance = origPerf;
+
+  check('a slow frame rate still ends inside the cap', done, `${ticks} ticks`);
+  check('it ends near the cap, not at the planned duration',
+    t <= 5400, `${t}ms of simulated time`);
+  check('the finished page is painted when the cap is hit', s3.complete);
+}
+
+/* ── frame rate must not change how LONG the build takes ─────────────────
+   Without the cap, a build that asks for 1x should still finish in about
+   `duration` ms of real time. With dt clamped at 50ms and 200ms frames, the
+   scene clock used to advance at a quarter speed, so a 27s build silently
+   took 110s. That is the 140-second report.                                */
+for (const frameMs of [16, 120, 250]) {
+  const bp4 = makeBlueprint();
+  const sw = new Swarm(canvas, bp4);
+  let t = 0;
+  let finishedAt = null;
+  const origPerf = globalThis.performance;
+  globalThis.performance = { now: () => t };
+
+  sw.play({ speed: 1, onDone: () => (finishedAt = t) });
+  for (let i = 0; i < 5000 && finishedAt === null; i++) {
+    t += frameMs;
+    sw.tick(t);
+  }
+  globalThis.performance = origPerf;
+
+  const target = sw.duration;
+  const drift = Math.abs(finishedAt - target);
+  check(`a ${frameMs}ms frame rate finishes when it says it will`,
+    finishedAt !== null && drift < frameMs * 2,
+    `planned ${Math.round(target)}ms, took ${finishedAt}ms`);
+}
+
+
 console.log(failures === 0 ? '\nSWARM OK' : `\n${failures} FAILED`);
 process.exit(failures ? 1 : 0);

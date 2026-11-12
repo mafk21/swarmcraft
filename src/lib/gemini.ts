@@ -175,7 +175,15 @@ class GeminiError extends Error {
   }
 }
 
-const TIMEOUT_MS = 25_000;
+/**
+ * Ceiling for a single request — deliberately generous.
+ *
+ * It is NOT the limit on the build; BUDGET_MS is. This only stops a request
+ * that has clearly died. Being stingy here is the wrong trade: a page that
+ * arrives at 30s is worth far more to the user than a clean timeout at 25s,
+ * and the animation can always be compressed to absorb it.
+ */
+const TIMEOUT_MS = 55_000;
 
 /**
  * The hard limit for the whole build, animation included.
