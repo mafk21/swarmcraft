@@ -42,6 +42,7 @@ export default function BuildScreen() {
   const [live, setLive] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [themeInfo, setThemeInfo] = useState<string | null>(null);
+  const [guardNotes, setGuardNotes] = useState<string[]>([]);
 
   const [html, setHtml] = useState<string>('');
   // which run has already been executed — StrictMode would otherwise fire the
@@ -109,7 +110,8 @@ export default function BuildScreen() {
           ...(pdf ? { __source: pdf.text } : {}),
         };
 
-        const { spec } = await buildSpec(key, kind, enriched);
+        const { spec, repairs } = await buildSpec(key, kind, enriched);
+        if (repairs.length) setGuardNotes(repairs);
         if (cancelled) return;
 
         /* theme */
@@ -354,6 +356,27 @@ export default function BuildScreen() {
             <p className="mono tiny dim" style={{ margin: 0, letterSpacing: '0.04em' }}>
               {note.toUpperCase()}
             </p>
+          </div>
+        )}
+
+        {guardNotes.length > 0 && phase === 'done' && (
+          <div
+            className="mono tiny"
+            style={{
+              position: 'absolute',
+              left: 20,
+              bottom: themeInfo ? 64 : 22,
+              maxWidth: 340,
+              color: 'var(--t2)',
+              background: 'rgba(255,255,255,0.9)',
+              padding: '7px 10px',
+              borderRadius: 4,
+              border: '1px solid var(--l2)',
+              lineHeight: 1.5,
+              zIndex: 5,
+            }}
+          >
+            guard: {guardNotes.join(' · ')}
           </div>
         )}
 

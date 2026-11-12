@@ -41,9 +41,11 @@ not exist five seconds ago, and it actually runs.
 
 ## Status
 
-🟢 **Runs.** The full funnel works: key → kind → brief (with optional PDF) → sections →
-theme → build → result. Export is a standalone HTML file. No key? The first screen has a
-demo build that skips the model.
+🟢 **Runs, and you can reopen what you made.** Key → kind → brief (with optional PDF) →
+sections → theme → build → result. Your sites are listed and reopen at a workbench where
+every field is editable, sections can be added, duplicated, reordered or removed, and the
+build can be replayed from the edited page. Export is a standalone HTML file. No key? The
+first screen has a demo build that skips the model.
 
 The reference research is in [docs/chrome-extension-field-guide.md](docs/chrome-extension-field-guide.md) —
 historical, from when this started life as an extension idea. Kept for browser-API

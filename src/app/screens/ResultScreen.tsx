@@ -2,34 +2,43 @@ import { useMemo, useState } from 'react';
 import { useApp } from '../store';
 import { renderDocument } from '../../lib/render';
 import { saveProject } from '../../lib/db';
+import { findSlop } from '../../lib/spec';
+import Inspector from '../Inspector';
 
 export default function ResultScreen() {
-  const { spec, reset } = useApp();
+  const { spec, patch, reset, startNew, projectId, saved, kind } = useApp();
   const [note, setNote] = useState<string | null>(null);
 
   const html = useMemo(() => (spec ? renderDocument(spec) : ''), [spec]);
+  const slop = useMemo(() => (spec ? findSlop(spec) : []), [spec]);
 
   if (!spec) {
     return (
       <div className="busy">
         <p>Nothing was built yet.</p>
-        <button className="btn btn-primary" onClick={reset}>
-          Start over
+        <button className="btn btn-primary" onClick={startNew}>
+          Start a site
         </button>
       </div>
     );
   }
 
+  function toast(m: string) {
+    setNote(m);
+    window.setTimeout(() => setNote((n) => (n === m ? null : n)), 2400);
+  }
+
   async function save() {
     if (!spec) return;
-    await saveProject(spec);
-    setNote('Saved to this browser.');
-    setTimeout(() => setNote(null), 2600);
+    const id = await saveProject(spec, { id: projectId ?? undefined, kind });
+    patch({ projectId: id, saved: true });
+    toast('Saved to this browser.');
   }
 
   async function exportHtml() {
     if (!spec) return;
     const blob = new Blob([html], { type: 'text/html' });
+    const name = `${slug(spec.meta.title)}.html`;
 
     // File System Access where available, download otherwise
     const picker = (
@@ -41,7 +50,7 @@ export default function ResultScreen() {
     if (picker) {
       try {
         const handle = await picker({
-          suggestedName: `${slug(spec.meta.title)}.html`,
+          suggestedName: name,
           types: [{ description: 'HTML', accept: { 'text/html': ['.html'] } }],
         });
         const w = await handle.createWritable();
@@ -49,7 +58,7 @@ export default function ResultScreen() {
         await w.close();
         return;
       } catch {
-        /* user cancelled — fall through to nothing */
+        /* cancelled */
         return;
       }
     }
@@ -57,16 +66,21 @@ export default function ResultScreen() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${slug(spec.meta.title)}.html`;
+    a.download = name;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setNote('Downloaded.');
-    setTimeout(() => setNote(null), 2600);
+    toast('Downloaded.');
   }
 
   function openTab() {
     const blob = new Blob([html], { type: 'text/html' });
     window.open(URL.createObjectURL(blob), '_blank');
+  }
+
+  function rebuild() {
+    if (!spec) return;
+    // a rebuild re-measures the CURRENT html, so edits show up in the animation
+    patch({ spec, runId: useApp.getState().runId + 1, blueprint: null, step: 'build' });
   }
 
   return (
@@ -76,27 +90,54 @@ export default function ResultScreen() {
           {spec.meta.title}
           <span>
             {spec.sections.length} sections · {spec.meta.theme}
-            {spec.meta.themeReason ? ` · ${spec.meta.themeReason}` : ''}
+            {saved ? ' · saved' : ' · not saved'}
           </span>
         </div>
-        {note && <span className="tiny dim">{note}</span>}
+        <button className="btn btn-sm btn-ghost" onClick={rebuild}>
+          Replay build
+        </button>
         <button className="btn btn-sm btn-ghost" onClick={openTab}>
           Open in a tab
         </button>
-        <button className="btn btn-sm btn-ghost" onClick={save}>
-          Save
+        <button className="btn btn-sm" onClick={save}>
+          {saved ? 'Save changes' : 'Save'}
         </button>
         <button className="btn btn-sm btn-primary" onClick={exportHtml}>
           Export HTML
         </button>
-        <button className="btn btn-sm btn-ghost" onClick={reset}>
+        <button className="btn btn-sm btn-ghost" onClick={startNew}>
           New site
+        </button>
+        <button className="btn btn-sm btn-ghost" onClick={reset}>
+          All sites
         </button>
       </div>
 
-      <div className="result-stage">
-        <iframe srcDoc={html} title={spec.meta.title} />
+      {slop.length > 0 && (
+        <div style={{ padding: '10px 24px', borderBottom: '1px solid var(--l2)' }}>
+          <div className="warn-line">
+            <div>
+              <strong>{slop.length} phrase{slop.length === 1 ? '' : 's'} to look at.</strong>{' '}
+              {[...new Set(slop.map((f) => f.phrase))].slice(0, 4).join(', ')}
+              {slop.length > 4 ? '…' : ''} — these read like generic marketing copy. Nothing is
+              blocking; edit them if they bother you.
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="bench">
+        <div className="bench-stage">
+          <iframe srcDoc={html} title={spec.meta.title} />
+        </div>
+        <Inspector
+          spec={spec}
+          onSpec={(next) => patch({ spec: next, saved: false })}
+          onToast={toast}
+        />
       </div>
+
+      {note && <div className="toast">{note}</div>}
     </div>
   );
 }

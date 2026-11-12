@@ -1,7 +1,11 @@
 import { useEffect } from 'react';
 import { useApp, STEP_LABEL, STEP_ORDER } from './store';
+
+/** the steps that appear in the rail, in order */
+const RAIL = STEP_ORDER.filter((s) => s !== 'projects' && s !== 'key');
 import { getApiKey } from '../lib/db';
 import KeyScreen from './screens/KeyScreen';
+import ProjectsScreen from './screens/ProjectsScreen';
 import KindScreen from './screens/KindScreen';
 import BriefScreen from './screens/BriefScreen';
 import SectionsScreen from './screens/SectionsScreen';
@@ -20,20 +24,28 @@ export default function App() {
 
   const wide = step === 'build';
   const bare = step === 'result';
+  // the step rail only applies once you are actually building something
+  const showRail = step !== 'key' && step !== 'projects' && step !== 'result';
 
   return (
     <div className="shell">
       {!bare && (
         <header className="hdr">
           <div className="hdr-in">
-            <div className="mark">
+            <button
+              className="mark mark-btn"
+              onClick={() => go(hasKey ? 'projects' : 'key')}
+              title="Your sites"
+            >
               <Mark />
               swarmsmith
-            </div>
+            </button>
+            {showRail && (
             <nav className="stepper">
-              {STEP_ORDER.map((s, i) => {
-                const at = STEP_ORDER.indexOf(step);
-                const state = i < at ? 'done' : i === at ? 'now' : 'todo';
+              {RAIL.map((s) => {
+                const i = RAIL.indexOf(s);
+                const at = RAIL.indexOf(step as (typeof RAIL)[number]);
+                const state = at < 0 ? 'todo' : i < at ? 'done' : i === at ? 'now' : 'todo';
                 const enabled = state === 'done' && hasKey;
                 return (
                   <button
@@ -49,12 +61,14 @@ export default function App() {
                 );
               })}
             </nav>
+            )}
           </div>
         </header>
       )}
 
       <main className={`main${wide ? ' wide' : ''}`}>
         {step === 'key' && <KeyScreen />}
+        {step === 'projects' && <ProjectsScreen />}
         {step === 'kind' && <KindScreen />}
         {step === 'brief' && <BriefScreen />}
         {step === 'sections' && <SectionsScreen />}
