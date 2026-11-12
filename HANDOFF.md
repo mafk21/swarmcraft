@@ -1,157 +1,111 @@
-# Handoff — read this first
+# HANDOFF
 
-**Last updated:** 2026-11-12
-**Branch:** `arena/9820dc5e-swarm-builder`
-**State:** 🔴 **PLANNING ONLY — zero application code exists.**
+Pick this up cold. Everything you need is in this file and the code.
 
-If you are picking this project up cold, this file tells you what it is, what
-was decided, what was *not* decided, and exactly where to start.
+## What it is
 
----
+A local app that builds a real website. You answer a few questions, pick a kind and
+sections, then nine cursors draw the page onto a canvas and the finished interactive
+site fades in underneath.
 
-## 60-second summary
+It runs at `localhost:5173`. There is no server, no extension, no store, no account.
 
-We are building **swarmsmith**: a **locally-run desktop web app** that generates
-a real website from a short interview, and then **builds it on screen with a
-swarm of animated design-tool cursors** — crosshair-dragged boxes, typed headlines, ruler
-guides, option-dragged cards.
+## Run it
 
-The visual language is borrowed from **Swarm Rebuild** (a viral Oct-2026 browser
-extension by Dhvanil Patel, motion design by Joel Califa). That product is a
-*visual trick*: it snapshots a page that already exists and has cursors
-*re-enact* building it. Nothing is generated.
-
-**Ours is real.** Gemini writes the site, we render it in a hidden iframe,
-snapshot the real DOM, then the cursors rebuild *that* — and the result is a
-working site you can edit and export.
-
-> The one-line thesis: **Swarm Rebuild re-enacts building a page that already
-> exists. Ours builds a page that didn't exist five seconds ago, written by
-> Gemini, and actually runs.**
-
----
-
-## Repository contents
-
-| File | What it is |
-|---|---|
-| `README.md` | Entry point, links |
-| **`docs/BUILD-PLAN.md`** | **The plan. Read this second.** |
-| `docs/chrome-extension-field-guide.md` | Platform research — mostly **historical now**: written when this was an extension. Still useful for browser-API notes |
-| `HANDOFF.md` | This file — state, decisions, where to start |
-
-That's all. No `package.json`, no `src/`, no build tooling.
-
----
-
-## Decisions locked (do not re-litigate)
-
-| # | Decision | Rationale |
-|---|---|---|
-| 1 | **A locally-run web app.** NOT an extension. | User's explicit correction. `npm run dev` → `localhost`, or a packaged desktop build later. See plan §4.4 |
-| 2 | **Frontend first.** No backend, ever, for v1 | User's explicit instruction. Everything runs locally |
-| 3 | **One free Gemini API key**, entered by the user on first run | Never bundled. Stored in **IndexedDB** |
-| 4 | **The model never writes CSS** | It returns a JSON `SiteSpec` only. All styling comes from 8 hand-written theme token files. This is how "no AI patterns" is *guaranteed* rather than requested |
-| 5 | **Render → snapshot → rebuild** | Gemini spec → hidden iframe → DOM snapshot → cursors rebuild it → hand off live. Never animate the spec directly or the animation could lie |
-| 6 | **Zero browser permissions, zero manifests** | Nothing to request, nothing to review. Chrome extension is **not** the delivery mechanism |
-| 7 | **PDF only** for documents in v1, parsed locally with pdf.js | User's choice. No upload, so no privacy question |
-| 8 | **Nine Muses** = nine named agent personas | Calliope plans; Erato reads docs; Euterpe writes copy; Urania does pricing/menus; Melpomene is the slop guard; Polyhymnia does a11y; Terpsichore does interaction; Thalia handles voice; Clio enforces consistency |
-
-## The Quiet Doctrine (non-negotiable)
-
-**The app:** no ✦ sparkles, no purple→blue gradients, no glow, no glassmorphism,
-no emoji icons, no chat bubbles, no "Assistant" persona, no "✨ Generating…",
-no typing-dots. It must look like a **design tool** — neutral greys, one accent,
-1px borders, 4px radii, a visible grid, plain verbs (*Continue*, *Build*, *Export*).
-
-**Generated sites:** no gradient blobs, no three-emoji feature cards, no
-"Unlock the power of…", no lorem ipsum, no stock hero copy. Enforced
-structurally (§6 of the plan) plus Melpomene's veto pass.
-
----
-
-## ⚠️ Still unresolved — ask the user before Phase 0
-
-1. **Name.** `swarmsmith` is a working title only.
-2. **Sound on by default?** The reference has procedural audio; recommendation was *on* with a one-click mute.
-3. **Cursor labels.** Muse names on cursors vs. neutral labels (*Builder 1*). Recommendation was Muse names.
-
-None of these block Phase 0 scaffolding.
-
----
-
-## Where to start
-
-The plan defines 8 phases. **Two viable entry points** — the user was offered
-both and had not chosen when this handoff was written:
-
-### Option A — Phase 0 (breadth first)
-Scaffold Vite + TypeScript + React, build the tool design system, and produce all
-seven funnel screens as **clickable static HTML** with hardcoded data.
-→ You see the whole funnel fast. Risk: you may discover late that the animation
-doesn't land.
-
-### Option B — Phase 1 first (risk first) ← *recommended*
-Build only the **swarm engine** against a **hand-written hardcoded page**: intro
-orbit, crosshair drag with live size badge, character-by-character typing with a
-caret, pen-tool borders, ruler guides with snapping, ⌥-drag duplicates, media
-sweeps, outro flock to the mouse. Plus the HUD (Tour · 1×/2×/3× · sound · replay ·
-stop).
-→ Answers the only question that can kill this project, in ~3 days, before
-anything else is invested.
-
-**Do not start Phase 2+ until the cursors feel genuinely good.** That is the
-whole product's first impression, and it is the one thing a plan cannot prove.
-
----
-
-## How the swarm pipeline works (the part that's easy to get wrong)
-
-```
-intake answers
-   → Gemini returns a SiteSpec (JSON, sections + content, ZERO styling)   [Zod]
-   → renderer builds real DOM in a HIDDEN iframe with the chosen theme
-   → snapshotter walks that real DOM → Blueprint {rects, textRuns, lines, media, groups}
-   → canvas blanks; cursors rebuild from the Blueprint
-   → "Go live" fades to the real, interactive iframe
+```bash
+npm install
+npm run dev          # http://localhost:5173
 ```
 
-**Why snapshot a real render?** Because the cursors must rebuild something that
-actually exists. If we animated the spec directly and rendered separately, the
-two could disagree — and we'd have rebuilt the original product's dishonesty.
+Node 22+. `npm run build` and `npm run typecheck` both pass.
 
-**Why choreography is tractable:** we author the 13 section components, so we
-already know the hero headline is a typed text run and pricing tiers are
-⌥-dragged duplicates. Choreography is *authored*, not inferred.
+You need one free Gemini API key (`https://aistudio.google.com/apikey`) for the real
+pipeline. To watch the swarm without a key, click
+**"Watch the swarm with a sample page instead"** on the first screen — it builds a
+hand-written Store spec and skips the model entirely.
 
-### Motion-credit note
-The choreography concept is **Joel Califa's**; **Dhvanil Patel** adapted it into
-an extension. Those repos are **unlicensed** — do not copy their code. Build our
-own engine from the publicly described vocabulary, and credit both in the app's
-About screen. This is a legal and reputational requirement, not a nicety.
+## What is done
 
----
+The whole path works end to end:
 
-## Non-negotiables for any future implementer
+1. **Key screen** — validates the key against Google, stores it in IndexedDB.
+2. **Kind** — ten kinds (`src/lib/spec.ts`).
+3. **Brief** — two framing questions plus each kind's own question set
+   (`src/lib/questions.ts`), and optional PDF extraction (`src/lib/pdf.ts`, pdf.js,
+   in-page, no upload, 30-page cap, honest failure on scanned PDFs).
+4. **Sections** — the checklist for that kind, hero pinned, minimum three.
+5. **Theme** — let the model choose, or pick one of eight hand-built systems
+   (`src/lib/themes.ts`) plus six accents.
+6. **Build** — Gemini returns a `SiteSpec`, `render()` produces a complete HTML
+   document, `snapshotHtml()` measures it in a hidden iframe, `Swarm` rebuilds those
+   measurements on a canvas, then the real iframe fades in.
+7. **Result** — full-page preview, save to IndexedDB, export standalone HTML.
 
-- ❌ No model-authored CSS — a test should fail if `SiteSpec` ever contains a `styles` field.
-- ❌ No bundled API key. Ever.
-- ❌ Not an extension — do not re-introduce a manifest, service worker, or store flow.
-- ❌ No sparkles / gradients / emoji icons anywhere in the UI.
-- ✅ Export must work offline with zero external requests.
-- ✅ `Replay` must rebuild from the cached Blueprint and cost zero tokens — it is
-  also the "prove it's real" feature.
-- ✅ Reduced-motion support and full keyboard navigation.
+## The four ideas that make it work
 
----
+**1. The model cannot write CSS.**
+`SiteSpecSchema` is `.strict()`. There is no field for a style, a class, or a colour.
+The model composes typed sections and writes copy; it picks a `ThemeId` from a closed
+enum of eight. Worst case output is *plain*, never slop. This is enforced by the schema,
+not by prompting.
 
-## Full history
+**2. The animation is measured, not invented.**
+`snapshot()` walks the real rendered document and records every box, every ruled line,
+and every *visual line of text* (measured per character, so line breaks are exact).
+The cursors then draw those numbers. This is why it reads as someone building the page:
+it is the page. Nothing is re-flowed or guessed.
 
-| Commit | What |
+**3. Nine lanes, no overlaps.**
+`planSchedule()` assigns each step to the cursor that is free soonest and nearest.
+A lane never starts its next step until the current one is finished, so no box is ever
+abandoned half-dragged. In the engine test, 270 steps scheduled with zero lane overlaps
+across roughly 25 seconds.
+
+**4. Pause and speed are honest.**
+The clock is accumulated (`clock += dt * speed`) rather than derived from start time, so
+pausing freezes it and changing speed changes the rate without jumping.
+
+## Where things are
+
+| file | what |
 |---|---|
-| `89ce93c` | Initial commit (skeleton) |
-| `c7cee7f` | Rewrite build plan: swarm-rebuild visual language driving a real generated site |
+| `src/lib/spec.ts` | the schema, the ten kinds, the thirteen sections, the slop list |
+| `src/lib/questions.ts` | per-kind question sets and section checklists |
+| `src/lib/themes.ts` | eight authored type systems + six accents |
+| `src/lib/render.ts` | `SiteSpec` → complete HTML document |
+| `src/lib/blueprint.ts` | `snapshot()` — real DOM → measured Blueprint |
+| `src/lib/swarm.ts` | the engine: flocking, scheduling, painting, camera |
+| `src/lib/gemini.ts` | the two model calls and their response schemas |
+| `src/lib/samples.ts` | the hand-written demo spec |
+| `src/styles/tokens.css` | design system: monochrome chrome, nine cursor colours |
+| `src/app/` | the funnel: store, shell, seven screens |
 
-> Earlier planning iterations (a page-*analyzer* product, and a Muse-agent
-> chat tool) were superseded. If you find fragments of those ideas anywhere,
-> they are **not** the current direction.
+## Known gaps, in priority order
+
+1. **No browser testing was possible in the build sandbox.** The pipeline typechecks,
+   the renderer and the scheduler are unit-verified, but the canvas has never been seen
+   running. First task: open the demo build and watch it.
+2. **Slop guard is not wired.** `findSlop()` exists in `spec.ts` and is unused. It should
+   run after `buildSpec()` and, on a hit, re-ask once for the offending sections.
+3. **Landmarks land all at once.** `advance()` completes every travel before any paint.
+   The cursors should be staggered so boxes land at different moments — this is the
+   difference between "nine cursors moved" and "nine cursors built a page."
+4. **The Muses are decoration.** Their names appear as cursor labels only. Their actual
+   responsibilities (sitemap, voice, slop, a11y) are still one monolith call.
+5. **Kind-specific section shapes are generic.** Every kind renders from the same
+   thirteen section types. A store's product grid and a portfolio's gallery should not
+   be the same component.
+6. **Edit mode does not exist.** The result screen exports but does not let you change
+   anything.
+7. **Reduced motion.** `prefers-reduced-motion` is handled in the app's styles but not in
+   the engine — it should jump to the finished state.
+
+## Non-negotiables
+
+- **Not an extension.** No manifest, service worker, `chrome.storage`, or store flow.
+- **The model never writes CSS.** If a change would let it, the change is wrong.
+- **No AI patterns.** No gradients, no glassmorphism, no emoji, no "unlock the power",
+  no centred-everything hero with three identical feature cards. Both in the app chrome
+  and in every generated site.
+- **Facts only from the user.** If they gave no testimonials, none are invented.
+- **Frontend only.** No backend. IndexedDB and the File System Access API are enough.
