@@ -52,7 +52,6 @@ export default function BuildScreen() {
     theme,
     accent,
     pdf,
-    demo,
     runId,
     patch,
     go,
@@ -90,52 +89,6 @@ export default function BuildScreen() {
 
     (async () => {
       try {
-        /* ── demo: skip the model entirely, use the hand-written spec ── */
-        if (demo) {
-          const spec = useApp.getState().spec;
-          if (!spec) throw new Error('No sample was loaded.');
-
-          const html = renderDocument(spec);
-          setHtml(html);
-
-          setPhase('measuring');
-          setNote('Measuring the page');
-          const demoDeadline = Date.now() + BUDGET_MS;
-          const bp = await raceDeadline(
-            snapshotHtml(html, stageWidth(), demoDeadline),
-            demoDeadline
-          );
-          if (cancelled) return;
-          patch({ blueprint: bp });
-
-          setPhase('building');
-          setNote('Building');
-          const canvas = canvasRef.current;
-          if (!canvas) return;
-          const swarm = new Swarm(canvas, bp);
-          swarmRef.current = swarm;
-          swarm.resize();
-          const onR = () => swarm.resize();
-          window.addEventListener('resize', onR);
-
-          requestAnimationFrame(() => {
-            swarm.play({
-              speed: 1,
-              hardCapMs: 45_000,
-              onProgress: (p) => setProgress(p),
-              onDone: () => {
-                setPhase('done');
-                setNote('Done');
-                setTimeout(() => {
-                  if (!cancelled) setLive(true);
-                }, 420);
-              },
-            });
-          });
-
-          return () => window.removeEventListener('resize', onR);
-        }
-
         const key = await getApiKey();
         if (!key) throw new Error('No API key saved. Go back and add one.');
         if (!kind) throw new Error('No site kind chosen.');

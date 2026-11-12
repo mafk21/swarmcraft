@@ -3,7 +3,7 @@ import { useApp, STEP_LABEL, STEP_ORDER } from './store';
 
 /** the steps that appear in the rail, in order */
 const RAIL = STEP_ORDER.filter((s) => s !== 'projects' && s !== 'key');
-import { getApiKey } from '../lib/db';
+import { getApiKey, storageAvailable } from '../lib/db';
 import KeyScreen from './screens/KeyScreen';
 import ProjectsScreen from './screens/ProjectsScreen';
 import KindScreen from './screens/KindScreen';
@@ -17,9 +17,18 @@ export default function App() {
   const { step, go, hasKey, patch } = useApp();
 
   useEffect(() => {
-    getApiKey().then((k) => {
-      if (k) patch({ hasKey: true });
-    });
+    /* Boot must never throw. Without storage the app still works for this
+       session — it just cannot remember the key or keep a site afterwards — and
+       the key screen says so instead of the page going blank. */
+    if (!storageAvailable()) {
+      patch({ storageBlocked: true });
+      return;
+    }
+    getApiKey()
+      .then((k) => {
+        if (k) patch({ hasKey: true });
+      })
+      .catch(() => patch({ storageBlocked: true }));
   }, [patch]);
 
   const wide = step === 'build';

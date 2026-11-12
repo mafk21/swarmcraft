@@ -138,9 +138,16 @@ export default function ResultScreen() {
         const w = await handle.createWritable();
         await w.write(new Blob([files[0].html], { type: 'text/html' }));
         await w.close();
+        toast(`Saved ${files[0].name}.`);
         return;
-      } catch {
-        return;
+      } catch (e) {
+        /* Cancelling the picker is a choice, not a failure — say nothing and
+           fall through to a download so the work is not lost. Anything else
+           gets an honest message instead of a silent dead button. */
+        const denied = e instanceof DOMException && e.name === 'AbortError';
+        if (!denied) {
+          toast('Could not write to that location — downloading instead.');
+        }
       }
     }
 

@@ -14,7 +14,7 @@ const bundle = await build({
     contents: `
       export * from './src/lib/spec';
       export { renderDocument } from './src/lib/render';
-      export { DEMO_SPEC } from './src/lib/samples';
+      export { DEMO_SPEC } from './scripts/fixtures/sample-spec';
       export { THEMES, ACCENT_HEX, THEME_LIST, THEME_AFFINITY, themeCss } from './src/lib/themes';
       export { KIND_BRIEFS, defaultSections, questionCount } from './src/lib/questions';
       export { newSection } from './src/lib/presets';
