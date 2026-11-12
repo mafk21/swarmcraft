@@ -63,6 +63,16 @@ export type PlayOptions = {
   speed?: number;
   onProgress?: (p: number) => void;
   onDone?: () => void;
+  /**
+   * Hard stop in ms of real time, from the moment play() is called.
+   *
+   * Speed is a request, not a promise: a machine that cannot draw a frame
+   * quickly enough will fall behind whatever multiplier we ask for, and there
+   * is nothing the animation can do about that. This is the promise. When the
+   * cap is reached the page is painted finished and onDone fires, whether or
+   * not every cursor got to its last box.
+   */
+  hardCapMs?: number;
 };
 
 /* ── the engine ──────────────────────────────────────────────────────────── */
@@ -93,8 +103,29 @@ export class Swarm {
   private doneLines = new Set<number>();
   private typingText = new Map<number, number>(); // text index -> chars drawn
 
-  /** accumulated animation time in ms; only advances while playing */
+  /**
+   * Scene time in ms: how far into the animation we are. Derived from real time
+   * and speed, so pausing freezes it and changing speed changes its rate.
+   */
   private clock = 0;
+
+  /**
+   * Real elapsed ms since play(), excluding paused spells.
+   *
+   * The build is measured against this, not against a sum of frame deltas. A
+   * frame that takes longer than 50ms used to be clamped in `dt`, which
+   * silently stretched a 27s animation into a minute or more on a slow machine:
+   * the screen stayed on the build while the user counted to 140.
+   */
+  private wall = 0;
+  private wallStart = 0;
+  private pausedMs = 0;
+  private pausedAt = 0;
+
+  /** Real seconds of animation actually shown, for the honest "built in Ns". */
+  get elapsedWall() {
+    return this.wall;
+  }
   private raf = 0;
   private last = 0;
   private total = 0;
@@ -261,6 +292,10 @@ export class Swarm {
     this.complete = false;
     this.returning = false;
     this.clock = 0;
+    this.wall = 0;
+    this.wallStart = performance.now();
+    this.pausedMs = 0;
+    this.pausedAt = 0;
     this.last = performance.now();
     this.doneBoxes.clear();
     this.doneLines.clear();
@@ -282,10 +317,15 @@ export class Swarm {
   }
 
   pause() {
+    if (this.paused) return;
     this.paused = true;
+    this.pausedAt = performance.now();
   }
 
   resume() {
+    if (!this.paused) return;
+    this.pausedMs += performance.now() - this.pausedAt;
+    this.pausedAt = 0;
     this.paused = false;
     this.last = performance.now();
   }
@@ -321,13 +361,31 @@ export class Swarm {
   /* ── the frame ───────────────────────────────────────────────────────── */
 
   private tick = (now: number) => {
+    /* dt is only used for steering smoothing, so clamping a long frame is right
+       there — a 300ms hitch must not fling the cursors across the page. It is
+       NOT right for the timeline, which is why wall time is measured separately
+       below rather than accumulated from dt. */
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
 
     if (!this.paused && !this.finished) {
-      // the clock is accumulated, so pausing freezes it and changing speed
-      // changes the rate without ever jumping backwards or forwards
-      this.clock += dt * 1000 * this.speed;
+      const pausedNow = this.pausedMs + (this.pausedAt ? now - this.pausedAt : 0);
+      this.wall = Math.max(0, now - this.wallStart - pausedNow);
+
+      /* Out of time: paint the finished page and hand over. Reached only when
+         the machine cannot draw fast enough for the requested speed. */
+      if (this.opts.hardCapMs && this.wall >= this.opts.hardCapMs) {
+        this.finished = true;
+        this.complete = true;
+        this.clock = this.total;
+        this.render(true);
+        this.opts.onProgress?.(1);
+        this.opts.onDone?.();
+        return;
+      }
+
+      // scene position: real time spent, scaled by speed
+      this.clock = this.wall * this.speed;
       const elapsed = this.clock;
 
       this.advance(elapsed);
@@ -580,8 +638,13 @@ export class Swarm {
 
     const all = final || this.complete;
 
-    /* boxes */
+    /* boxes
+       Culled vertically like text already was. Without this every box on a
+       six-thousand-pixel page was filled on every frame whether it was on
+       screen or not, which is the difference between a smooth build and a
+       fan spinning up on a laptop. */
     for (const b of bp.boxes) {
+      if (!all && (b.y + b.h < viewTop || b.y > viewBottom)) continue;
       const idx = this.boxIdx.get(b)!;
       if (all || this.doneBoxes.has(idx)) this.paintBox(ctx, b, 1);
       else {
@@ -597,6 +660,7 @@ export class Swarm {
 
     /* rules / lines */
     for (const l of bp.lines) {
+      if (!all && (Math.max(l.y1, l.y2) < viewTop || Math.min(l.y1, l.y2) > viewBottom)) continue;
       const idx = this.lineIdx.get(l)!;
       if (all || this.doneLines.has(idx)) this.paintLine(ctx, l, 1);
       else {
