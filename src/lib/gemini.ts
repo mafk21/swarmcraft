@@ -16,6 +16,14 @@ import { KIND_BRIEFS } from './questions';
 import { validateSpec, findSlop } from './spec';
 
 const MODEL = 'gemini-2.5-flash';
+
+/**
+ * 2.5 Flash THINKS by default, and thinking tokens are not billable output but
+ * they are wall-clock. A structured 400-word page would spend 20–60s reasoning
+ * before emitting a character. We do not need that: the schema and the brief
+ * already constrain the answer. Turn it off and the same draft lands in 2–5s.
+ */
+const NO_THINKING = { thinkingConfig: { thinkingBudget: 0 } } as const;
 const ENDPOINT = (model: string, key: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
     key
@@ -161,13 +169,37 @@ class GeminiError extends Error {
   }
 }
 
+const TIMEOUT_MS = 45_000;
+
 async function call(key: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
-  const res = await fetch(ENDPOINT(MODEL, key), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal,
-  });
+  // A request that never resolves is worse than one that fails: the user has no
+  // information and no way out. Every call gets a hard ceiling.
+  const ctl = new AbortController();
+  const onAbort = () => ctl.abort();
+  signal?.addEventListener('abort', onAbort, { once: true });
+  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+
+  let res: Response;
+  try {
+    res = await fetch(ENDPOINT(MODEL, key), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: ctl.signal,
+    });
+  } catch (e) {
+    if (signal?.aborted) throw new GeminiError('Cancelled.', 0);
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new GeminiError(
+        `Google did not answer within ${Math.round(TIMEOUT_MS / 1000)} seconds. That is usually a slow connection or a rate limit — try again.`,
+        408
+      );
+    }
+    throw new GeminiError('Could not reach Google. Check your connection.', 0);
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
+  }
 
   if (!res.ok) {
     let detail = `${res.status}`;
@@ -230,6 +262,7 @@ export async function buildSpec(
       responseMimeType: 'application/json',
       responseSchema: RESPONSE_SCHEMA,
       maxOutputTokens: 4096,
+      ...NO_THINKING,
     },
   };
 
@@ -343,6 +376,7 @@ export async function pickTheme(
       generationConfig: {
         temperature: 0.4,
         responseMimeType: 'application/json',
+        ...NO_THINKING,
         responseSchema: obj(
           {
             theme: { type: 'string', enum: [...THEME_IDS] },
@@ -414,6 +448,7 @@ export async function clio(
         temperature: 0.1,
         responseMimeType: 'application/json',
         responseSchema: RESPONSE_SCHEMA,
+        ...NO_THINKING,
       },
     },
     signal
@@ -475,6 +510,7 @@ export async function thalia(
         temperature: 0.5,
         responseMimeType: 'application/json',
         responseSchema: RESPONSE_SCHEMA,
+        ...NO_THINKING,
       },
     },
     signal
@@ -647,10 +683,13 @@ export async function buildSite(
     register?: string;
     wanted?: string[];
     onMuse?: (r: MuseReport) => void;
+    /** fired BEFORE each pass, so the UI can label and time it honestly */
+    onStage?: (label: string) => void;
     signal?: AbortSignal;
     withMuses?: boolean;
   } = {}
 ): Promise<BuiltSite> {
+  opts.onStage?.('Writing the page');
   const { spec, repairs } = await buildSpec(key, kind, answers, opts.signal);
   const reports: MuseReport[] = [];
 
@@ -668,6 +707,7 @@ export async function buildSite(
 
   if (opts.withMuses !== false) {
     try {
+      opts.onStage?.('Clio, checking consistency');
       const c = await clio(key, current, opts.signal);
       current = c.spec;
       record(c.reports[0]);
@@ -676,6 +716,7 @@ export async function buildSite(
     }
 
     try {
+      opts.onStage?.('Thalia, fixing the voice');
       const t = await thalia(key, current, opts.register ?? '', opts.signal);
       current = t.spec;
       record(t.reports[0]);
