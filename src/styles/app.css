@@ -1,0 +1,693 @@
+/* ============================================================================
+   App chrome. Monochrome only. The nine cursor colours are the only
+   saturation on screen — that is what makes them read as agents.
+   ========================================================================== */
+
+#root {
+  min-height: 100vh;
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ── header ────────────────────────────────────────────────────────────── */
+
+.hdr {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: color-mix(in srgb, var(--s0) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--l2);
+}
+
+.hdr-in {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.mark {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-size: 0.9375rem;
+}
+
+.mark svg {
+  display: block;
+}
+
+/* ── stepper ───────────────────────────────────────────────────────────── */
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: var(--r1);
+  font-size: 0.75rem;
+  color: var(--t3);
+  background: none;
+  border: 0;
+  font-family: inherit;
+  cursor: default;
+}
+
+.step[data-state='done'] {
+  color: var(--t2);
+  cursor: pointer;
+}
+
+.step[data-state='done']:hover {
+  background: var(--s2);
+}
+
+.step[data-state='now'] {
+  color: var(--t0);
+  background: var(--s2);
+}
+
+.step i {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--l3);
+  display: grid;
+  place-items: center;
+  font-size: 8px;
+  font-style: normal;
+  font-family: var(--mono);
+}
+
+.step[data-state='done'] i {
+  background: var(--t0);
+  border-color: var(--t0);
+  color: var(--s0);
+}
+
+.step[data-state='now'] i {
+  border-color: var(--t0);
+}
+
+/* ── body ──────────────────────────────────────────────────────────────── */
+
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+.main.wide {
+  max-width: none;
+  padding: 0;
+}
+
+.screen {
+  animation: rise 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.head {
+  max-width: 640px;
+  margin-bottom: 32px;
+}
+
+.head h1 {
+  font-size: 1.75rem;
+  font-weight: 620;
+  letter-spacing: -0.028em;
+  line-height: 1.2;
+  margin: 0 0 10px;
+}
+
+.head p {
+  margin: 0;
+  color: var(--t2);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+
+/* ── layout helpers ────────────────────────────────────────────────────── */
+
+.two {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 340px);
+  gap: 32px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .two {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── kind grid ─────────────────────────────────────────────────────────── */
+
+.kinds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.kind {
+  text-align: left;
+  padding: 16px;
+  background: var(--s1);
+  border: 1px solid var(--l2);
+  border-radius: var(--r2);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.14s, background 0.14s, transform 0.14s;
+}
+
+.kind:hover {
+  border-color: var(--l3);
+  background: var(--s2);
+  transform: translateY(-1px);
+}
+
+.kind[aria-pressed='true'] {
+  border-color: var(--t0);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--t0);
+}
+
+.kind strong {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: 3px;
+}
+
+.kind span {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--t3);
+  line-height: 1.4;
+}
+
+/* ── field ─────────────────────────────────────────────────────────────── */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.field > label,
+.field-label {
+  font-size: 0.8125rem;
+  font-weight: 550;
+  color: var(--t0);
+  letter-spacing: -0.005em;
+}
+
+.field .hint {
+  font-size: 0.75rem;
+  color: var(--t3);
+  line-height: 1.45;
+  margin-top: -2px;
+}
+
+.req {
+  color: var(--t3);
+  font-weight: 400;
+}
+
+/* choices */
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.choice {
+  padding: 8px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--l2);
+  background: var(--s1);
+  color: var(--t2);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: all 0.14s;
+}
+
+.choice:hover {
+  border-color: var(--l3);
+  color: var(--t0);
+}
+
+.choice[aria-pressed='true'] {
+  background: var(--t0);
+  border-color: var(--t0);
+  color: var(--s0);
+}
+
+/* toggles */
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid var(--l2);
+  border-radius: var(--r1);
+  background: var(--s1);
+  cursor: pointer;
+}
+
+.toggle-row:hover {
+  border-color: var(--l3);
+}
+
+.toggle-row input {
+  margin-top: 2px;
+  accent-color: var(--t0);
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.toggle-row p {
+  margin: 2px 0 0;
+  font-size: 0.75rem;
+  color: var(--t3);
+  line-height: 1.45;
+}
+
+.toggle-row strong {
+  font-size: 0.8125rem;
+  font-weight: 550;
+}
+
+/* ── footer bar ────────────────────────────────────────────────────────── */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--l2);
+}
+
+.bar .spacer {
+  flex: 1;
+}
+
+.bar .note {
+  font-size: 0.75rem;
+  color: var(--t3);
+}
+
+/* ── theme cards ───────────────────────────────────────────────────────── */
+
+.themes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.theme-card {
+  text-align: left;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--l2);
+  border-radius: var(--r2);
+  background: var(--s1);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.14s, transform 0.14s;
+}
+
+.theme-card:hover {
+  border-color: var(--l3);
+  transform: translateY(-1px);
+}
+
+.theme-card[aria-pressed='true'] {
+  border-color: var(--t0);
+  box-shadow: inset 0 0 0 1px var(--t0);
+}
+
+.theme-prev {
+  height: 96px;
+  padding: 12px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--l2);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  justify-content: center;
+}
+
+.theme-meta {
+  padding: 11px 13px;
+}
+
+.theme-meta strong {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.theme-meta span {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--t3);
+  line-height: 1.4;
+}
+
+/* ── error ─────────────────────────────────────────────────────────────── */
+
+.err {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--l2);
+  border-left: 3px solid var(--t0);
+  border-radius: var(--r1);
+  background: var(--s2);
+  font-size: 0.8125rem;
+  color: var(--t1);
+  line-height: 1.5;
+}
+
+.err strong {
+  display: block;
+  color: var(--t0);
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+
+/* ── build screen ──────────────────────────────────────────────────────── */
+
+.build-wrap {
+  position: relative;
+  height: calc(100vh - 56px);
+  background: var(--s1);
+  overflow: hidden;
+}
+
+.build-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.build-frame {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  background: #fff;
+}
+
+.build-frame.live {
+  opacity: 1;
+}
+
+/* hud */
+.hud {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 999px;
+  background: rgba(16, 17, 19, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.24);
+  z-index: 5;
+  backdrop-filter: blur(12px);
+}
+
+.hud button {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  color: rgba(255, 255, 255, 0.62);
+  background: none;
+  border: 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+  white-space: nowrap;
+}
+
+.hud button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.hud button[aria-pressed='true'] {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.hud .div {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.16);
+  margin: 0 3px;
+}
+
+.hud .go {
+  color: #101113;
+  background: #fff;
+  font-weight: 600;
+}
+
+.hud .go:hover {
+  color: #101113;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+/* progress rail */
+.rail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(0, 0, 0, 0.08);
+  z-index: 6;
+}
+
+.rail i {
+  display: block;
+  height: 100%;
+  background: var(--t0);
+  transition: width 0.1s linear;
+}
+
+/* ── result ────────────────────────────────────────────────────────────── */
+
+.result-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--l2);
+  background: var(--s0);
+  flex-wrap: wrap;
+}
+
+.result-bar .title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-right: auto;
+}
+
+.result-bar .title span {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--t3);
+  font-weight: 400;
+}
+
+.result-stage {
+  height: calc(100vh - 56px - 53px);
+  background: var(--s2);
+}
+
+.result-stage iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+  display: block;
+}
+
+/* ── key screen ────────────────────────────────────────────────────────── */
+
+.keypad {
+  max-width: 460px;
+  margin: 40px auto;
+  text-align: center;
+}
+
+.keypad h1 {
+  font-size: 1.5rem;
+  font-weight: 620;
+  letter-spacing: -0.025em;
+  margin: 0 0 10px;
+}
+
+.keypad > p {
+  color: var(--t2);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  margin: 0 0 24px;
+}
+
+.keypad form {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.keypad a {
+  color: var(--t0);
+  text-underline-offset: 2px;
+}
+
+.key-note {
+  margin-top: 20px;
+  font-size: 0.75rem;
+  color: var(--t3);
+  line-height: 1.6;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--l2);
+  border-radius: var(--r1);
+  background: var(--s1);
+}
+
+/* ── empty/busy ────────────────────────────────────────────────────────── */
+
+.busy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 80px 24px;
+  text-align: center;
+}
+
+.busy p {
+  color: var(--t2);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--l2);
+  border-top-color: var(--t0);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── pdf drop ──────────────────────────────────────────────────────────── */
+
+.drop {
+  border: 1px dashed var(--l3);
+  border-radius: var(--r2);
+  padding: 18px;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--t3);
+  background: var(--s1);
+  cursor: pointer;
+  transition: border-color 0.14s, background 0.14s;
+}
+
+.drop:hover,
+.drop.over {
+  border-color: var(--t1);
+  background: var(--s2);
+  color: var(--t1);
+}
+
+.drop strong {
+  color: var(--t0);
+  font-weight: 550;
+}
+
+.pdf-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--t2);
+  padding: 9px 11px;
+  border: 1px solid var(--l2);
+  border-radius: var(--r1);
+  background: var(--s1);
+}
+
+.pdf-done button {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: var(--t3);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-family: inherit;
+}
+
+.pdf-done button:hover {
+  color: var(--t0);
+}
