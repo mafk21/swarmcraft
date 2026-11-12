@@ -4,7 +4,7 @@
    its old value rather than corrupting the site.
    ========================================================================== */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Section, SectionType, SiteSpec, ThemeId } from '../lib/spec';
 import {
   editSectionField,
@@ -21,6 +21,7 @@ import { THEMES, ACCENT_HEX } from '../lib/themes';
 import { SECTION_FIELDS, sectionSummary, type FieldSpec, type OField } from './editors';
 import { newSection } from '../lib/presets';
 import { renderDocument } from '../lib/render';
+import { addMedia, getMedia } from '../lib/db';
 
 type Tab = 'content' | 'design';
 
@@ -28,11 +29,22 @@ export type InspectorProps = {
   spec: SiteSpec;
   onSpec: (s: SiteSpec) => void;
   onToast: (m: string) => void;
+  /** section index to expand, set by clicking the preview */
+  focus?: { index: number; nonce: number } | null;
 };
 
-export default function Inspector({ spec, onSpec, onToast }: InspectorProps) {
+export default function Inspector({ spec, onSpec, onToast, focus }: InspectorProps) {
   const [tab, setTab] = useState<Tab>('content');
   const [open, setOpen] = useState<number | null>(0);
+
+  // clicking a section in the preview opens its card
+  const lastNonce = useRef<number>(-1);
+  useEffect(() => {
+    if (!focus || focus.nonce === lastNonce.current) return;
+    lastNonce.current = focus.nonce;
+    setTab('content');
+    setOpen(focus.index);
+  }, [focus]);
 
   /* ── field plumbing ──────────────────────────────────────────────────── */
 
@@ -262,6 +274,36 @@ function FieldEditor({
     );
   }
 
+  if (field.kind === 'image') {
+    return (
+      <ImageField
+        label={field.label}
+        hint={field.hint}
+        value={value as { src: string; alt?: string } | undefined}
+        onChange={onChange}
+      />
+    );
+  }
+
+  if (field.kind === 'select') {
+    return (
+      <label className="edit-field">
+        <span>{field.label}</span>
+        <select
+          className="select"
+          value={typeof value === 'string' ? value : field.options[0]?.value}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          {field.options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
   if (field.kind === 'list') {
     const list = Array.isArray(value) ? (value as string[]) : [];
     return (
@@ -365,6 +407,33 @@ function OFieldEditor({
   value: unknown;
   onChange: (v: unknown) => void;
 }) {
+  if (field.kind === 'image') {
+    return (
+      <ImageField
+        label={field.label}
+        value={value as { src: string; alt?: string } | undefined}
+        onChange={onChange}
+      />
+    );
+  }
+
+  if (field.kind === 'span') {
+    return (
+      <label className="edit-field">
+        <span>{field.label}</span>
+        <select
+          className="select"
+          value={typeof value === 'string' ? value : 'normal'}
+          onChange={(e) => onChange(e.target.value === 'normal' ? undefined : e.target.value)}
+        >
+          <option value="normal">Normal</option>
+          <option value="wide">Wide — two columns</option>
+          <option value="tall">Tall — two rows</option>
+        </select>
+      </label>
+    );
+  }
+
   if (field.kind === 'list') {
     const list = Array.isArray(value) ? (value as string[]) : [];
     return (
@@ -420,6 +489,104 @@ function OFieldEditor({
         onChange={(e) => onChange(e.target.value)}
       />
     </label>
+  );
+}
+
+/**
+ * Bring a photograph in. It is read, measured and stored in IndexedDB on this
+ * machine; the spec only ever holds `media:<id>`. Nothing is uploaded.
+ */
+function ImageField({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: { src: string; alt?: string } | undefined;
+  onChange: (v: unknown) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const src = value?.src ?? '';
+
+  useEffect(() => {
+    let alive = true;
+    if (!src.startsWith('media:')) {
+      setPreview(null);
+      return;
+    }
+    getMedia(src.slice(6)).then((row) => {
+      if (alive) setPreview(row?.data ?? null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [src]);
+
+  async function pick(file: File | undefined) {
+    if (!file) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const row = await addMedia(file);
+      onChange({ src: `media:${row.id}`, alt: value?.alt ?? '' });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not use that file.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="edit-field">
+      <span>
+        {label}
+        {hint ? ` · ${hint}` : ''}
+      </span>
+
+      {src ? (
+        <div className="img-pick">
+          <div className="img-thumb">{preview && <img src={preview} alt="" />}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <input
+              className="input"
+              placeholder="Describe the picture"
+              value={value?.alt ?? ''}
+              onChange={(e) => onChange({ src, alt: e.target.value })}
+            />
+            <button
+              className="btn btn-sm btn-ghost"
+              style={{ marginTop: 6 }}
+              onClick={() => onChange(undefined)}
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          className="btn btn-sm btn-ghost"
+          disabled={busy}
+          onClick={() => fileRef.current?.click()}
+        >
+          {busy ? 'Reading…' : 'Choose a picture'}
+        </button>
+      )}
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => pick(e.target.files?.[0])}
+      />
+      {err && <span className="tiny dim">{err}</span>}
+    </div>
   );
 }
 

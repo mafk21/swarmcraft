@@ -105,6 +105,11 @@ export class Swarm {
 
   private speed = 1;
   private paused = false;
+  /** respected: no intro, no orbit, no flocking theatrics — just land it */
+  private reduced =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private finished = false;
   /** set once every step has committed — the canvas then paints the truth */
   private complete = false;
@@ -238,6 +243,19 @@ export class Swarm {
   play(opts: PlayOptions = {}) {
     this.opts = opts;
     this.speed = opts.speed ?? 1;
+
+    // Someone who asked the OS for less motion gets the finished page, not a
+    // four-second animation they have to sit through.
+    if (this.reduced) {
+      this.finished = true;
+      this.complete = true;
+      this.camY = 0;
+      this.targetCamY = 0;
+      this.render(true);
+      opts.onProgress?.(1);
+      opts.onDone?.();
+      return;
+    }
     this.paused = false;
     this.finished = false;
     this.complete = false;
@@ -398,7 +416,7 @@ export class Swarm {
 
   /** flocking + arrival */
   private steer(dt: number) {
-    const inOutro = this.elapsed > this.total - this.outroMs;
+    const inOutro = !this.reduced && this.elapsed > this.total - this.outroMs;
 
     const targetFor = (agentIndex: number) => {
       const agent = this.agents[agentIndex];
@@ -409,7 +427,7 @@ export class Swarm {
           y: this.outroPoint.y - Math.floor(agentIndex / 3) * 13,
         };
       }
-      if (this.elapsed < this.introMs) {
+      if (!this.reduced && this.elapsed < this.introMs) {
         // intro orbit: a slow ring around the middle of the viewport
         const t = this.elapsed / 1000;
         const a = (agentIndex / 9) * Math.PI * 2 + t * 1.5;

@@ -67,6 +67,18 @@ export type AccentId = (typeof ACCENTS)[number];
  */
 const strict = <T extends z.ZodRawShape>(shape: T) => z.object(shape).strict();
 
+/**
+ * A reference to an image the user brought themselves. `src` may be:
+ *   - 'media:<id>'  a file in IndexedDB (inlined as a data URL on export)
+ *   - 'pages/<n>'   another page in this site (used by portfolio case cards)
+ * Anything else is ignored at render time, so a model cannot inject a remote
+ * URL and turn this into a tracking pixel.
+ */
+const ImageRef = z.object({
+  src: z.string().trim().max(2048),
+  alt: z.string().trim().max(200).optional(),
+});
+
 const nonEmpty = z.string().trim().min(1).max(400);
 const short = z.string().trim().min(1).max(120);
 const body = z.string().trim().min(1).max(1200);
@@ -77,6 +89,7 @@ const HeroSection = strict({
   headline: z.string().trim().min(1).max(90),
   sub: z.string().trim().min(1).max(240),
   cta: strict({ label: short, href: short }).optional(),
+  image: ImageRef.optional(),
 });
 
 const FeaturesSection = strict({
@@ -115,6 +128,7 @@ const ProductsSection = strict({
         name: short,
         price: short,
         note: short.optional(),
+        image: ImageRef.optional(),
       })
     )
     .min(3)
@@ -140,6 +154,7 @@ const AboutSection = strict({
   type: z.literal('about'),
   heading: short,
   body: z.array(body).min(1).max(4),
+  image: ImageRef.optional(),
 });
 
 const MenuSection = strict({
@@ -150,7 +165,14 @@ const MenuSection = strict({
       strict({
         name: short,
         items: z
-          .array(strict({ name: short, price: short, note: short.optional() }))
+          .array(
+            strict({
+              name: short,
+              price: short,
+              note: short.optional(),
+              image: ImageRef.optional(),
+            })
+          )
           .min(2)
           .max(14),
       })
@@ -162,7 +184,20 @@ const MenuSection = strict({
 const GallerySection = strict({
   type: z.literal('gallery'),
   heading: short.optional(),
-  items: z.array(strict({ title: short, caption: short.optional() })).min(3).max(9),
+  items: z
+    .array(
+      strict({
+        title: short,
+        caption: short.optional(),
+        image: ImageRef.optional(),
+        /** 'wide' takes two columns, 'tall' takes two rows */
+        span: z.enum(['normal', 'wide', 'tall']).optional(),
+      })
+    )
+    .min(3)
+    .max(9),
+  /** which composition this gallery uses */
+  layout: z.enum(['grid', 'feature', 'strip', 'masonry']).optional(),
 });
 
 const StatsSection = strict({
@@ -494,4 +529,89 @@ export function moveSection(spec: SiteSpec, index: number, delta: number): SiteS
   const [item] = sections.splice(index, 1);
   sections.splice(to, 0, item);
   return { ...spec, sections };
+}
+
+
+/* ============================================================================
+   Pages.
+
+   A SiteSpec is one page. A SiteSpec[] is a site. Page 0 is always the home
+   page; its nav becomes the site nav. Links between pages use `page:2`, which
+   render() turns into a real href.
+   ========================================================================== */
+
+export type SiteDoc = {
+  pages: SiteSpec[];
+  /** which page index the workbench is showing */
+  current: number;
+};
+
+export function siteTitle(doc: SiteDoc): string {
+  return doc.pages[0]?.meta.title ?? 'Untitled';
+}
+
+/**
+ * Turn `page:2` into a real href, and leave everything else alone.
+ * Export filenames come from pageSlug(), so home is index.html and the rest are
+ * derived from their titles.
+ */
+export function resolveHref(
+  href: string,
+  fromIndex: number,
+  inExport: boolean,
+  slugs?: string[]
+): string {
+  const m = href.match(/^page:(\d+)$/);
+  if (!m) return href;
+  const n = Number(m[1]);
+  if (n === fromIndex) return '#top';
+  if (!inExport) return `#page-${n}`;
+  return `./${slugs?.[n] ?? `page-${n + 1}`}.html`;
+}
+
+/** Every page after the first needs a slug for export filenames. */
+export function pageSlug(spec: SiteSpec, index: number): string {
+  const base = spec.meta.title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40) || 'page';
+  return index === 0 ? 'index' : base;
+}
+
+/** A blank page in the same voice and theme as the home page. */
+export function newPage(from: SiteSpec, title: string): SiteSpec {
+  return {
+    meta: {
+      title,
+      description: from.meta.description,
+      theme: from.meta.theme,
+      accent: from.meta.accent,
+    },
+    nav: {
+      brand: from.nav.brand,
+      // a new page needs a way back home, ahead of whatever the home page links to
+      links: [{ label: 'Home', href: 'page:0' }, ...from.nav.links].slice(0, 6),
+    },
+    sections: [
+      {
+        type: 'hero',
+        headline: title,
+        sub: 'One sentence about what is on this page.',
+      },
+      {
+        type: 'about',
+        heading: 'About this page',
+        body: ['Replace this with what belongs here.'],
+      },
+      {
+        type: 'contact',
+        heading: 'Contact',
+        email: 'you@example.com',
+        form: false,
+      },
+    ],
+    footer: { note: from.footer.note },
+    voice: { register: from.voice.register, facts: from.voice.facts },
+  };
 }

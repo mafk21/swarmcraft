@@ -9,15 +9,22 @@ import type { Section } from '../lib/spec';
 
 export type FieldSpec =
   | { key: string; label: string; kind: 'text' | 'long'; hint?: string }
+  | { key: string; label: string; kind: 'image'; hint?: string }
   | { key: string; label: string; kind: 'list'; hint?: string; of: 'text' | 'long' }
   | { key: string; label: string; kind: 'objs'; hint?: string; fields: OField[] }
-  | { key: string; label: string; kind: 'groups'; hint?: string; fields: OField[] };
+  | { key: string; label: string; kind: 'groups'; hint?: string; fields: OField[] }
+  | { key: string; label: string; kind: 'select'; options: { value: string; label: string }[] };
 
-export type OField = { key: string; label: string; kind: 'text' | 'long' | 'list' };
+export type OField = {
+  key: string;
+  label: string;
+  kind: 'text' | 'long' | 'list' | 'image' | 'span';
+};
 
 export const SECTION_FIELDS: Record<Section['type'], FieldSpec[]> = {
   hero: [
     { key: 'eyebrow', label: 'Eyebrow', kind: 'text' },
+    { key: 'image', label: 'Picture', kind: 'image', hint: 'Optional. Nothing is uploaded.' },
     { key: 'headline', label: 'Headline', kind: 'text' },
     { key: 'sub', label: 'Sub-line', kind: 'long' },
     { key: 'cta', label: 'Button', kind: 'objs', fields: [
@@ -45,6 +52,7 @@ export const SECTION_FIELDS: Record<Section['type'], FieldSpec[]> = {
   products: [
     { key: 'heading', label: 'Heading', kind: 'text' },
     { key: 'items', label: 'Products', kind: 'objs', fields: [
+      { key: 'image', label: 'Picture', kind: 'image' },
       { key: 'name', label: 'Name', kind: 'text' },
       { key: 'price', label: 'Price', kind: 'text' },
       { key: 'note', label: 'Note', kind: 'text' },
@@ -67,6 +75,7 @@ export const SECTION_FIELDS: Record<Section['type'], FieldSpec[]> = {
   ],
   about: [
     { key: 'heading', label: 'Heading', kind: 'text' },
+    { key: 'image', label: 'Portrait', kind: 'image' },
     { key: 'body', label: 'Paragraphs', kind: 'list', of: 'long' },
   ],
   menu: [
@@ -78,9 +87,22 @@ export const SECTION_FIELDS: Record<Section['type'], FieldSpec[]> = {
   ],
   gallery: [
     { key: 'heading', label: 'Heading', kind: 'text' },
+    {
+      key: 'layout',
+      label: 'Composition',
+      kind: 'select',
+      options: [
+        { value: 'grid', label: 'Grid — equal weight' },
+        { value: 'feature', label: 'Feature — one large' },
+        { value: 'strip', label: 'Strip — a run of pictures' },
+        { value: 'masonry', label: 'Masonry — varied heights' },
+      ],
+    },
     { key: 'items', label: 'Pieces', kind: 'objs', fields: [
+      { key: 'image', label: 'Picture', kind: 'image' },
       { key: 'title', label: 'Title', kind: 'text' },
       { key: 'caption', label: 'Caption', kind: 'text' },
+      { key: 'span', label: 'Size', kind: 'span' },
     ] },
   ],
   stats: [
