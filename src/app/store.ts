@@ -63,8 +63,6 @@ type S = {
   busy: boolean;
   pdf: { name: string; pages: number; chars: number; text: string } | null;
   demo: boolean;
-  /** run Clio + Thalia as well as the draft (three calls instead of one) */
-  reviewPasses: boolean;
   /** increments each time a build is requested; keys the build effect */
   runId: number;
 
@@ -95,7 +93,6 @@ const initial = {
   busy: false,
   pdf: null,
   demo: false,
-  reviewPasses: true,
   runId: 0,
 };
 

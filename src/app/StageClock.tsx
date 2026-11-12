@@ -13,18 +13,14 @@
 import { useEffect, useState } from 'react';
 
 const TYPICAL: Record<string, number> = {
-  'Writing the page': 7,
-  'Clio, checking consistency': 5,
-  'Thalia, fixing the voice': 5,
+  'Writing the page': 8,
   'Choosing type and colour': 3,
   'Measuring the page': 2,
 };
 
 const CEILING: Record<string, number> = {
-  'Writing the page': 45,
-  'Clio, checking consistency': 45,
-  'Thalia, fixing the voice': 45,
-  'Choosing type and colour': 45,
+  'Writing the page': 40,
+  'Choosing type and colour': 40,
   'Measuring the page': 8,
 };
 
@@ -69,7 +65,7 @@ export function StageClock({
         <span className="clock-elapsed">{secs.toFixed(1)}s</span>
         <span className="clock-meta">
           {overdue
-            ? `past the ${ceiling}s limit — it will fail now`
+            ? `past the ${ceiling}s limit`
             : secs < typical
               ? `usually about ${typical}s`
               : `usually ${typical}s — this one is slower`}

@@ -33,18 +33,24 @@ export type AnswerMap = Record<string, string | string[] | boolean>;
 
 /* ── prompt ──────────────────────────────────────────────────────────────── */
 
-const SYSTEM = `You write website content. You are being used by a builder that renders your output into a designed page.
+const SYSTEM = `You write and edit website content. A builder renders your output into a designed page. You are the only pass: the draft you return is what ships, so get it right the first time.
 
 Hard rules, no exceptions:
 
 1. NEVER write CSS, HTML, class names, colours, fonts or layout. The schema has no field for it. Do not add extra keys.
-2. Write like a person who runs the thing. Concrete, specific, short sentences. British or American spelling, but be consistent.
-3. Do not invent facts, numbers, testimonials, client names, prices, addresses or credentials. If the user gave you none, write around it. For testimonials with no source material, return an honest empty-ish section or omit it entirely.
+2. Write like a person who runs the thing. Concrete, specific, short sentences. One spelling convention throughout — pick British or American and keep it.
+3. Do not invent facts, numbers, testimonials, client names, prices, addresses or credentials. If the user gave you none, write around it. Never invent a testimonial.
 4. Banned phrases — using any of these fails validation: "unlock the power", "unleash", "elevate your", "next level", "game-changer", "cutting-edge", "state-of-the-art", "seamlessly", "revolutionize", "world-class", "best-in-class", "one-stop shop", "look no further", "we are passionate about", "in today's fast-paced", "delve into", "tapestry", "empower", "transform your business".
-5. Gallery sections must set "layout": one of grid, feature, strip, masonry. Choose by purpose: "feature" for a portfolio where one piece should dominate, "strip" for photographs of a place, "masonry" for varied work, "grid" for a catalogue of equal items. Never invent an image src; leave images out entirely unless told the user has files.
+5. No em-dash at the start of a sentence. No exclamation marks. No emoji.
 6. Headings are 2–5 words. No title case tics like "Why Choose Us?".
-7. The "voice.facts" array is the only material you may reuse. Keep every real number the user gave you there, verbatim.
-8. Sections must appear in an order a reader would want them, starting with "hero".`;
+7. Be internally consistent. One name for the company, one price per thing, one format per phone number or price. If the user gave prices in one format, use it everywhere.
+8. Match the tone the user asked for in every sentence. Do not drift warm, do not drift corporate.
+9. The "voice.facts" array is the only material you may reuse. Keep every real number the user gave you there, verbatim.
+10. Sections must appear in an order a reader would want them, starting with "hero". Put contact last if it exists.
+11. For images, never invent a src. Omit image fields entirely unless the user tells you they have files.
+12. Accessibility: every button label says what it does, never "click here" or "learn more".
+
+Be brief. A page that says three true things well beats one that says nine vaguely.`;
 
 /** What each kind's page should actually be made of, in order. */
 export const KIND_SHAPES: Record<string, string> = {
@@ -169,68 +175,111 @@ class GeminiError extends Error {
   }
 }
 
-const TIMEOUT_MS = 45_000;
+const TIMEOUT_MS = 40_000;
 
 async function call(key: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
-  // A request that never resolves is worse than one that fails: the user has no
-  // information and no way out. Every call gets a hard ceiling.
+  /* The ceiling has to cover the BODY, not just the headers.
+     The previous version cleared the timer as soon as `fetch` resolved, so a
+     stream that opened and then stalled hung forever — the clock ran past the
+     limit and nothing ever happened. One timer now spans the whole exchange. */
   const ctl = new AbortController();
   const onAbort = () => ctl.abort();
   signal?.addEventListener('abort', onAbort, { once: true });
-  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
 
-  let res: Response;
-  try {
-    res = await fetch(ENDPOINT(MODEL, key), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: ctl.signal,
-    });
-  } catch (e) {
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctl.abort();
+  }, TIMEOUT_MS);
+
+  const fail = (e: unknown): never => {
     if (signal?.aborted) throw new GeminiError('Cancelled.', 0);
-    if (e instanceof DOMException && e.name === 'AbortError') {
+    if (timedOut || (e instanceof DOMException && e.name === 'AbortError')) {
       throw new GeminiError(
-        `Google did not answer within ${Math.round(TIMEOUT_MS / 1000)} seconds. That is usually a slow connection or a rate limit — try again.`,
+        `Google did not finish within ${Math.round(
+          TIMEOUT_MS / 1000
+        )} seconds. Usually a rate limit or a slow connection. Try again.`,
         408
       );
     }
     throw new GeminiError('Could not reach Google. Check your connection.', 0);
+  };
+
+  try {
+    let res: Response;
+    try {
+      res = await fetch(ENDPOINT(MODEL, key), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: ctl.signal,
+      });
+    } catch (e) {
+      return fail(e);
+    }
+
+    if (!res.ok) {
+      let detail = `${res.status}`;
+      try {
+        const j = await res.json();
+        detail = j?.error?.message ?? detail;
+      } catch {
+        /* non-json error body */
+      }
+      const hint =
+        res.status === 429
+          ? ' — you have hit the free tier rate limit. Wait a minute, or turn off Review passes.'
+          : '';
+      throw new GeminiError(`${detail}${hint}`, res.status);
+    }
+
+    /* Reading the body is where it used to hang. */
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch (e) {
+      return fail(e);
+    }
+
+    const payload = json as {
+      candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
+      promptFeedback?: { blockReason?: string };
+    };
+
+    if (payload?.promptFeedback?.blockReason) {
+      throw new GeminiError(
+        `Google refused the request: ${payload.promptFeedback.blockReason}.`,
+        200
+      );
+    }
+
+    const text = payload?.candidates?.[0]?.content?.parts
+      ?.map((p) => p.text ?? '')
+      .join('');
+
+    if (!text) {
+      const reason = payload?.candidates?.[0]?.finishReason ?? 'no content returned';
+      throw new GeminiError(
+        reason === 'MAX_TOKENS'
+          ? 'The answer was cut off before it finished. Try fewer sections.'
+          : `The model returned nothing (${reason}).`,
+        200
+      );
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      const m = text.match(/\{[\s\S]*\}/);
+      if (!m) throw new GeminiError('The model did not return JSON.', 200);
+      return JSON.parse(m[0]);
+    }
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', onAbort);
   }
-
-  if (!res.ok) {
-    let detail = `${res.status}`;
-    try {
-      const j = await res.json();
-      detail = j?.error?.message ?? detail;
-    } catch {
-      /* non-json */
-    }
-    throw new GeminiError(detail, res.status);
-  }
-
-  const json = await res.json();
-  const text: string | undefined = json?.candidates?.[0]?.content?.parts
-    ?.map((p: { text?: string }) => p.text ?? '')
-    .join('');
-
-  if (!text) {
-    const reason = json?.candidates?.[0]?.finishReason ?? 'no content returned';
-    throw new GeminiError(String(reason), 200);
-  }
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    // model wrapped it in a fence
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) throw new GeminiError('The model did not return JSON.', 200);
-    return JSON.parse(m[0]);
-  }
 }
+
 
 /** Validate the key cheaply. */
 export async function testKey(key: string): Promise<{ ok: boolean; message: string }> {
@@ -261,7 +310,7 @@ export async function buildSpec(
       topP: 0.9,
       responseMimeType: 'application/json',
       responseSchema: RESPONSE_SCHEMA,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 3000,
       ...NO_THINKING,
     },
   };
@@ -668,12 +717,16 @@ function flatten(obj: unknown, prefix = '', acc: Record<string, string> = {}) {
 export type BuiltSite = { spec: SiteSpec; reports: MuseReport[]; repairs: string[] };
 
 /**
- * The full generation, with the passes the user can actually see:
- *   draft → slop guard → Clio (consistency) → Thalia (voice) → Polyhymnia
- *   (accessibility, deterministic) → Calliope (structure)
+ * The full generation — ONE model call.
  *
- * Every pass is optional on failure: a failed pass keeps the previous spec and
- * says so, because a page that ships beats a page stuck at 80%.
+ * It used to be three: a draft, then Clio and Thalia as separate passes. That
+ * was the whole reason a build took minutes. Their instructions are now folded
+ * into the single system prompt (consistency and voice, rules 7 and 8), and the
+ * deterministic checks still run afterwards because they are free and they can
+ * catch what a prompt cannot enforce.
+ *
+ * Budget: one call, thinking off, ~5–12 seconds in practice. Everything else in
+ * the funnel runs locally.
  */
 export async function buildSite(
   key: string,
@@ -683,14 +736,11 @@ export async function buildSite(
     register?: string;
     wanted?: string[];
     onMuse?: (r: MuseReport) => void;
-    /** fired BEFORE each pass, so the UI can label and time it honestly */
+    /** fired BEFORE each stage, so the UI can label and time it honestly */
     onStage?: (label: string) => void;
     signal?: AbortSignal;
-    withMuses?: boolean;
   } = {}
 ): Promise<BuiltSite> {
-  opts.onStage?.('Writing the page');
-  const { spec, repairs } = await buildSpec(key, kind, answers, opts.signal);
   const reports: MuseReport[] = [];
 
   const record = (r: MuseReport) => {
@@ -698,32 +748,26 @@ export async function buildSite(
     opts.onMuse?.(r);
   };
 
+  opts.onStage?.('Writing the page');
+  const { spec, repairs } = await buildSpec(key, kind, answers, opts.signal);
   let current = spec;
 
-  // Calliope runs first: structure is set before anyone rewrites prose
+  // Calliope: structural, free, and it cannot be left to the model
   const structure = calliope(current, opts.wanted ?? []);
   current = structure.spec;
   record(structure.reports[0]);
 
-  if (opts.withMuses !== false) {
-    try {
-      opts.onStage?.('Clio, checking consistency');
-      const c = await clio(key, current, opts.signal);
-      current = c.spec;
-      record(c.reports[0]);
-    } catch {
-      record({ muse: 'Clio', role: 'consistency', changed: false, notes: ['skipped, the call failed'] });
-    }
-
-    try {
-      opts.onStage?.('Thalia, fixing the voice');
-      const t = await thalia(key, current, opts.register ?? '', opts.signal);
-      current = t.spec;
-      record(t.reports[0]);
-    } catch {
-      record({ muse: 'Thalia', role: 'voice', changed: false, notes: ['skipped, the call failed'] });
-    }
-  }
+  // The model was asked to fix these in the same pass; report whether it did.
+  const findings = findSlop(current);
+  record({
+    muse: 'Melpomene',
+    role: 'slop guard',
+    changed: findings.length === 0,
+    notes:
+      findings.length === 0
+        ? ['no marketing phrases']
+        : [`left ${findings.length} phrase(s): ${[...new Set(findings.map((f) => f.phrase))].slice(0, 3).join(', ')}`],
+  });
 
   const a11y = polyhymnia(current);
   current = a11y.spec;

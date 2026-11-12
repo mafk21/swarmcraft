@@ -4,7 +4,7 @@ import { ACCENTS } from '../../lib/spec';
 import { KIND_BRIEFS } from '../../lib/questions';
 
 export default function ThemeScreen() {
-  const { kind, themeMode, theme, accent, patch, back, reviewPasses } = useApp();
+  const { kind, themeMode, theme, accent, patch, back } = useApp();
   if (!kind) return null;
 
   const suggested = KIND_BRIEFS[kind].themes;
@@ -100,17 +100,9 @@ export default function ThemeScreen() {
           Back
         </button>
         <div className="spacer" />
-        <label className="review-toggle">
-          <input
-            type="checkbox"
-            checked={reviewPasses}
-            onChange={(e) => patch({ reviewPasses: e.target.checked })}
-          />
-          <span>
-            Review passes
-            <em>Clio checks consistency, Thalia checks the voice. Two extra calls, about 10s.</em>
-          </span>
-        </label>
+        <span className="note">
+          One model call, then it builds in front of you. About a minute end to end.
+        </span>
         <button
           className="btn btn-primary"
           disabled={!ready}
