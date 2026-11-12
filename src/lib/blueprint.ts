@@ -373,8 +373,17 @@ export async function snapshotHtml(html: string, viewportWidth = 1440): Promise<
     const doc = frame.contentDocument;
     if (!doc) throw new Error('Could not read the rendered document.');
 
+    /* A font that never settles must not become a build that never ends.
+       `fonts.ready` has no timeout of its own, so it gets one here. Measuring a
+       hair early is invisible; never measuring at all is the bug the user hit. */
     try {
-      await (doc as Document & { fonts?: FontFaceSet }).fonts?.ready;
+      const fonts = (doc as Document & { fonts?: FontFaceSet }).fonts;
+      if (fonts?.ready) {
+        await Promise.race([
+          fonts.ready,
+          new Promise<void>((r) => setTimeout(r, 600)),
+        ]);
+      }
     } catch {
       /* engines without FontFaceSet */
     }

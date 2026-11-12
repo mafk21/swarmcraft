@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/snapshot-test.mjs && node scripts/swarm-test.mjs && node scripts/data-test.mjs"
+    "test": "node scripts/snapshot-test.mjs && node scripts/swarm-test.mjs && node scripts/data-test.mjs && node scripts/budget-test.mjs"
   },
   "dependencies": {
     "idb": "^8.0.0",
