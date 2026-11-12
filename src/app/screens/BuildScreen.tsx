@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../store';
 import { getApiKey } from '../../lib/db';
-import { buildSite, pickTheme, GeminiError, type MuseReport } from '../../lib/gemini';
+import { buildSite, GeminiError, type MuseReport } from '../../lib/gemini';
 import { renderDocument } from '../../lib/render';
 import { snapshotHtml } from '../../lib/blueprint';
 import { Swarm } from '../../lib/swarm';
 import { StageClock } from '../StageClock';
 import { THEMES } from '../../lib/themes';
-import type { ThemeId } from '../../lib/spec';
 
 /** The width the preview stage will really be, so measurements match the reveal. */
 function stageWidth() {
@@ -126,26 +125,19 @@ export default function BuildScreen() {
         if (repairs.length) setGuardNotes(repairs);
         if (cancelled) return;
 
-        /* theme */
+        /* theme
+           Auto mode used to make a SECOND model call just to pick a theme, even
+           though the main response schema already asks the model for one. It
+           picked it while writing the page, with the copy in front of it. So
+           there is nothing to wait for: use what came back. */
         let finalSpec = spec;
         if (themeMode === 'auto') {
-          setPhase('choosing-theme');
-          setNote('Choosing type and colour');
-          try {
-            const pick = await pickTheme(key, spec, ctl.signal);
-            finalSpec = {
-              ...spec,
-              meta: {
-                ...spec.meta,
-                theme: pick.theme as ThemeId,
-                accent: pick.accent as typeof spec.meta.accent,
-                themeReason: pick.reason,
-              },
-            };
-            setThemeInfo(`${THEMES[pick.theme]?.label ?? pick.theme} — ${pick.reason}`);
-          } catch {
-            /* fall through with the model's own guess */
-          }
+          const chosen = THEMES[spec.meta.theme];
+          setThemeInfo(
+            `${chosen?.label ?? spec.meta.theme}${
+              spec.meta.themeReason ? ` — ${spec.meta.themeReason}` : ''
+            }`
+          );
         } else if (theme && accent) {
           finalSpec = {
             ...spec,

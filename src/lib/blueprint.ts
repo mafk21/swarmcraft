@@ -80,6 +80,17 @@ function lineChunks(node: Text): Chunk[] {
 
   const doc = node.ownerDocument!;
   const range = doc.createRange();
+
+  // Engines without per-character rects (and any odd document context) fall
+  // back to treating the whole node as one line, rather than throwing.
+  if (typeof (range as Range).getClientRects !== 'function') {
+    const el = node.parentElement;
+    if (!el) return [];
+    const r = el.getBoundingClientRect();
+    const txt = raw.replace(/\s+/g, ' ').trim();
+    return txt ? [{ text: txt, rect: r }] : [];
+  }
+
   const out: Chunk[] = [];
 
   let current: { top: number; bottom: number; left: number; right: number; text: string } | null =
@@ -221,39 +232,37 @@ export function snapshot(doc: Document): Blueprint {
       });
     }
 
-    /* ── text: split every text node into visual lines ── */
-    let sawText = false;
-    const walkTextNodes = (node: Node) => {
-      node.childNodes.forEach((child) => {
-        if (child.nodeType === Node.TEXT_NODE) {
-          const chunks = lineChunks(child as Text);
-          if (chunks.length) sawText = true;
-          for (const c of chunks) {
-            texts.push({
-              ...rel(c.rect),
-              text: c.text,
-              size: px(cs.fontSize) || 16,
-              weight: parseInt(cs.fontWeight, 10) || 400,
-              font: cs.fontFamily,
-              mono: /mono/i.test(cs.fontFamily),
-              color: cs.color,
-              align: (['center', 'right'].includes(cs.textAlign)
-                ? cs.textAlign
-                : 'left') as LineText['align'],
-            });
-          }
-        } else if (child.nodeType === Node.ELEMENT_NODE) {
-          const t = (child as Element).tagName.toLowerCase();
-          if (t === 'script' || t === 'style' || t === 'svg' || t === 'img') return;
-          walkTextNodes(child);
-        }
-      });
-    };
-    walkTextNodes(el);
+    /* ── text: this element's OWN direct text, split into visual lines ──
+       Only direct text children. The old version recursed into every
+       descendant, set a flag, then returned early — which meant any section
+       containing any text was never descended into, and every card, product
+       tile and gallery plate below it was silently missing from the plan. */
+    let hasOwnText = false;
+    for (const child of Array.from(el.childNodes)) {
+      if (child.nodeType !== 3 /* TEXT_NODE */) continue;
+      const chunks = lineChunks(child as Text);
+      if (!chunks.length) continue;
+      hasOwnText = true;
+      for (const c of chunks) {
+        texts.push({
+          ...rel(c.rect),
+          text: c.text,
+          size: px(cs.fontSize) || 16,
+          weight: parseInt(cs.fontWeight, 10) || 400,
+          font: cs.fontFamily,
+          mono: /mono/i.test(cs.fontFamily),
+          color: cs.color,
+          align: (['center', 'right'].includes(cs.textAlign)
+            ? cs.textAlign
+            : 'left') as LineText['align'],
+        });
+      }
+    }
 
-    // If this element only held text, its children are covered; stop.
-    if (sawText) return;
-
+    // An element that holds nothing but text has no interesting children?
+    // It does — inline spans, links. Keep descending either way; the cost is
+    // trivial and skipping is what lost entire sections.
+    void hasOwnText;
     Array.from(el.children).forEach(walk);
   };
 
@@ -333,8 +342,10 @@ export function snapshot(doc: Document): Blueprint {
     texts,
     lines,
     steps,
-    background: getComputedStyle(body).backgroundColor,
-    ink: getComputedStyle(body).color,
+    // the DOCUMENT's window, not the global one: inside an iframe these differ,
+    // and the global one would style against the wrong document
+    background: win.getComputedStyle(body).backgroundColor,
+    ink: win.getComputedStyle(body).color,
   };
 }
 
