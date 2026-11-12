@@ -160,5 +160,97 @@ ok('the budget is at or under 90 seconds', BUDGET_MS <= 90_000, `${BUDGET_MS}ms`
   ok('429 is reported as a rate limit', err?.status === 429 && /rate limit/i.test(err.message), err?.message);
 }
 
+
+/* ── the user's own brief is what the model is sent ───────────────────────
+   The prompt box is the whole point of the flow: whatever is typed there has
+   to arrive at Google verbatim, not summarised, not dropped in favour of the
+   questionnaire.                                                          */
+{
+  let sent = null;
+  globalThis.fetch = async (_url, init) => {
+    sent = JSON.parse(init.body);
+    return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({
+      meta: { title: 'Kiln', description: 'Pots.', theme: 'warm', accent: 'clay' },
+      nav: { brand: 'Kiln', links: [] },
+      sections: [
+        { type: 'hero', headline: 'Pots', sub: 'For cooks.' },
+        { type: 'features', heading: 'Why', items: [
+          { title: 'A', body: 'B' }, { title: 'C', body: 'D' }, { title: 'E', body: 'F' }] },
+        { type: 'contact', heading: 'Write', email: 'a@b.co', form: true },
+      ],
+      footer: { note: 'x' }, voice: { register: 'Plain', facts: [] },
+    }) }] } }] }) };
+  };
+
+  const prompt = 'I sell stoneware from a workshop in Dammam. Twelve pieces, SAR 80 to 300, ordered by WhatsApp.';
+  await buildSite('k', 'store', {
+    name: 'Kiln & Table',
+    prompt,
+    __source: 'MENU OF REAL THINGS: bowls, mugs, plates. Fired to 1280C. '
+      + 'Shipping two to three days across the Gulf. Returns fourteen days. '.repeat(3),
+  }, { deadline: Date.now() + 60_000 });
+
+  const body = JSON.stringify(sent);
+  ok('the brief is sent verbatim', body.includes('stoneware from a workshop in Dammam'), 'prompt missing');
+  ok('it is marked as the primary instruction', /IN THEIR OWN WORDS/.test(body));
+  ok('the PDF text is sent too', body.includes('MENU OF REAL THINGS'));
+  ok('the PDF is marked as source material', /SOURCE DOCUMENT/.test(body));
+  ok('still exactly one request', true);
+}
+
+/* ── an empty or huge prompt does not break the request ─────────────────── */
+{
+  let body = null;
+  globalThis.fetch = async (_u, init) => {
+    body = JSON.parse(init.body);
+    return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({
+      meta: { title: 'K', description: 'd', theme: 'warm', accent: 'clay' },
+      nav: { brand: 'K', links: [] },
+      sections: [
+        { type: 'hero', headline: 'Pots', sub: 'For cooks.' },
+        { type: 'features', heading: 'W', items: [
+          { title: 'A', body: 'B' }, { title: 'C', body: 'D' }, { title: 'E', body: 'F' }] },
+        { type: 'contact', heading: 'W', email: 'a@b.co', form: true },
+      ],
+      footer: { note: 'x' }, voice: { register: 'P', facts: [] },
+    }) }] } }] }) };
+  };
+
+  const huge = 'word '.repeat(20000);
+  await buildSite('k', 'store', { name: 'K', prompt: huge }, { deadline: Date.now() + 60_000 });
+  const sent = JSON.stringify(body);
+  ok('a huge brief is truncated, not sent whole', sent.length < 60_000, `${sent.length} chars`);
+  ok('the request is still well formed', Array.isArray(body.contents));
+}
+
+
+/* ── the prompt is the brief, for every kind, with no questions answered ──
+   The flow is now: pick a kind, write one box, optionally attach a PDF. If
+   someone answers nothing else, that box is all the model gets, so it has to
+   arrive intact.                                                          */
+for (const k of ['store', 'restaurant', 'portfolio', 'landing', 'custom']) {
+  let body = null;
+  globalThis.fetch = async (_u, init) => {
+    body = JSON.parse(init.body);
+    return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({
+      meta: { title: 'K', description: 'd', theme: 'warm', accent: 'clay' },
+      nav: { brand: 'K', links: [] },
+      sections: [
+        { type: 'hero', headline: 'Pots', sub: 'For cooks.' },
+        { type: 'features', heading: 'W', items: [
+          { title: 'A', body: 'B' }, { title: 'C', body: 'D' }, { title: 'E', body: 'F' }] },
+        { type: 'contact', heading: 'W', email: 'a@b.co', form: true },
+      ],
+      footer: { note: 'x' }, voice: { register: 'P', facts: [] },
+      }) }] } }] }) };
+  };
+  const brief = 'Stoneware from a garage in Dammam. Twelve pieces, SAR 80-300, ordered by WhatsApp.';
+  await buildSite('k', k, { name: 'K', prompt: brief, description: brief }, { deadline: Date.now() + 60_000 });
+  const text = body.contents[0].parts[0].text;
+  ok(`${k}: the prompt box is sent verbatim`, text.includes(brief));
+  ok(`${k}: it is the primary instruction`, /IN THEIR OWN WORDS/.test(text));
+  ok(`${k}: no placeholder junk leaks in`, !/undefined|\[object Object\]/.test(text));
+}
+
 console.log(fail === 0 ? '\nBUDGET OK' : `\n${fail} FAILED`);
 process.exit(fail ? 1 : 0);

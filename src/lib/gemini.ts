@@ -83,7 +83,21 @@ function briefPrompt(kind: keyof typeof KIND_BRIEFS, answers: AnswerMap): string
   lines.push(`Site kind: ${kind}`);
   lines.push(`This kind of page is normally made of: ${KIND_SHAPES[kind] ?? 'hero, then what the user asked for.'}`);
   lines.push(`Name: ${String(answers.name ?? '')}`);
-  lines.push(`Description: ${String(answers.description ?? '')}`);
+
+  /* The user's own brief comes first and in full: it is the primary
+     instruction, and everything below is supporting detail they optionally
+     filled in. Putting it here rather than merging it into a field means the
+     model reads their words, not a paraphrase of them. */
+  const own = String(answers.prompt ?? answers.description ?? '').trim();
+  if (own) {
+    lines.push(
+      `WHAT THE USER WANTS, IN THEIR OWN WORDS\nThis is the brief. Follow it. Where it is specific, it wins over the generic advice below.\n\n${own.slice(0, 6000)}`
+    );
+  }
+
+  // keep the short description when it is a separate thing
+  const desc = String(answers.description ?? '').trim();
+  if (desc && desc !== own) lines.push(`Summary: ${desc}`);
 
   for (const q of brief.questions) {
     const v = answers[q.id];

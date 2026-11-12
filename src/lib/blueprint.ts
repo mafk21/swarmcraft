@@ -74,77 +74,127 @@ type Chunk = { text: string; rect: DOMRect };
  * Split a text node into visual lines using character-level measurement.
  * Returns one chunk per line, preserving the exact string on that line.
  */
+/**
+ * Split a text node into visual lines.
+ *
+ * The old version set a Range over ONE CHARACTER at a time and asked for its
+ * rects — thousands of `getClientRects()` calls on a real page, and every one of
+ * them forces a synchronous layout reflow. That is main-thread CPU work, and it
+ * is the reason the build's own deadline could not fire: a `setTimeout` cannot
+ * run while the thread is busy, so an 80-second limit became five minutes of a
+ * frozen screen. It is also just slow.
+ *
+ * This walks the node by word instead. The number of layout queries is now
+ * proportional to the number of LINES, not characters: a line's rect is taken
+ * from the first word on it, and the words are grouped by their `top`.
+ *
+ * Where a character-accurate box is needed (a single line of text), that is
+ * exactly what this returns, because one line means one rect.
+ */
 function lineChunks(node: Text): Chunk[] {
   const raw = node.textContent || '';
   if (!raw.trim()) return [];
 
   const doc = node.ownerDocument!;
+  const parent = node.parentElement;
+  if (!parent) return [];
+
   const range = doc.createRange();
 
-  // Engines without per-character rects (and any odd document context) fall
-  // back to treating the whole node as one line, rather than throwing.
+  /* Engines without per-character rects (and odd document contexts — this is
+     what the tests run in) get the whole node as one line rather than a throw. */
   if (typeof (range as Range).getClientRects !== 'function') {
-    const el = node.parentElement;
-    if (!el) return [];
-    const r = el.getBoundingClientRect();
     const txt = raw.replace(/\s+/g, ' ').trim();
-    return txt ? [{ text: txt, rect: r }] : [];
+    return txt ? [{ text: txt, rect: parent.getBoundingClientRect() }] : [];
   }
 
-  const out: Chunk[] = [];
-
-  let current: { top: number; bottom: number; left: number; right: number; text: string } | null =
-    null;
-
-  let i = 0;
-  while (i < raw.length) {
-    const ch = raw[i];
-
-    // collapse runs of whitespace fast, but keep the character for spacing
-    range.setStart(node, i);
-    range.setEnd(node, i + 1);
+  /* Measure a span of the node. One layout query, however long the span. */
+  const rectOf = (a: number, b: number): { top: number; bottom: number; left: number; right: number } | null => {
+    range.setStart(node, a);
+    range.setEnd(node, b);
     const r = range.getClientRects()[0];
+    return r ? { top: r.top, bottom: r.bottom, left: r.left, right: r.right } : null;
+  };
 
-    if (!r || r.width === 0 && ch.trim() === '') {
-      if (current && ch === ' ') current.text += ' ';
-      i += 1;
-      continue;
-    }
-    if (!r) {
-      i += 1;
-      continue;
+  /* How a line break is found without asking per character.
+
+     A paragraph of 6,000 characters is ~1,200 words but only ~85 lines, and the
+     thing that costs is the QUERY, not the arithmetic. So: take a segment, read
+     its top; take a single character at the end, read its top. If they match,
+     the whole segment is on one line — one query did the work of a thousand.
+     If they differ, the segment spans a break: halve it and try again. Then skip
+     to the line the second half starts on and repeat.
+
+     The result is a query count proportional to lines × log(segment), instead of
+     to characters. The per-character loop this replaces forced a synchronous
+     reflow for every letter on the page, which blocked the main thread long
+     enough that the build's own deadline could not fire. */
+  const out: Chunk[] = [];
+  let i = 0;
+  let guard = 0;
+
+  while (i < raw.length && guard++ < 4000) {
+    // skip leading whitespace between lines
+    while (i < raw.length && /\s/.test(raw[i])) i++;
+    if (i >= raw.length) break;
+
+    // grow a segment while it stays on one line
+    let end = Math.min(raw.length, i + 64);
+    let head = rectOf(i, i + 1);
+    if (!head) { i++; continue; }
+
+    let lo = i + 1;
+    let hi = end;
+    let lineEnd = i + 1;
+
+    while (lo <= hi) {
+      const probe = rectOf(i, hi);
+      if (probe && Math.abs(probe.top - head.top) <= 2) {
+        // the whole [i, hi) is on one line; try further
+        lineEnd = hi;
+        const next = Math.min(raw.length, hi + 64);
+        if (next === hi) break;
+        lo = hi + 1;
+        hi = next;
+      } else {
+        // a break falls inside [lo, hi): halve
+        hi = Math.floor((lo + hi) / 2);
+        if (hi < lo) break;
+      }
     }
 
-    const tol = 2;
-    if (current && Math.abs(r.top - current.top) <= tol) {
-      current.text += ch;
-      current.right = Math.max(current.right, r.right);
-      current.bottom = Math.max(current.bottom, r.bottom);
-      current.left = Math.min(current.left, r.left);
-    } else {
-      if (current) out.push(flush(current));
-      current = { top: r.top, bottom: r.bottom, left: r.left, right: r.right, text: ch };
+    // trim trailing whitespace, keep the text of this line
+    const text = raw.slice(i, lineEnd).replace(/\s+/g, ' ').trim();
+    const box = rectOf(i, lineEnd) ?? head;
+    if (text) {
+      out.push({
+        text,
+        rect: {
+          left: box.left,
+          top: box.top,
+          width: Math.max(1, box.right - box.left),
+          height: Math.max(1, box.bottom - box.top),
+        } as DOMRect,
+      });
     }
-    i += 1;
+
+    if (lineEnd <= i) break;
+    i = lineEnd;
   }
-  if (current) out.push(flush(current));
 
   range.detach?.();
-  return out.filter((c) => c.text.trim().length > 0);
-
-  function flush(c: {
-    top: number;
-    bottom: number;
-    left: number;
-    right: number;
-    text: string;
-  }): Chunk {
-    const rect = new DOMRect(c.left, c.top, Math.max(1, c.right - c.left), Math.max(1, c.bottom - c.top));
-    return { text: c.text.replace(/\s+/g, ' ').trim(), rect };
-  }
+  return out;
 }
 
 /* ── snapshot ────────────────────────────────────────────────────────────── */
+
+/**
+ * How many elements will be measured. Above this the page is bigger than any
+ * build animation can show anyway, and measuring it is how a 90-second budget
+ * becomes five minutes. Kept as a guard rather than a limit on correctness: a
+ * 400-element page is far beyond the nine-section cap.
+ */
+const MAX_ELEMENTS = 4000;
 
 export function snapshot(doc: Document): Blueprint {
   const win = doc.defaultView!;
@@ -166,7 +216,9 @@ export function snapshot(doc: Document): Blueprint {
     h: r.height,
   });
 
+  let visited = 0;
   const walk = (el: Element) => {
+    if (++visited > MAX_ELEMENTS) return;
     const tag = el.tagName.toLowerCase();
     if (tag === 'script' || tag === 'style' || tag === 'head' || tag === 'meta' || tag === 'link')
       return;
@@ -350,7 +402,12 @@ export function snapshot(doc: Document): Blueprint {
 }
 
 /** Measure a spec-rendered document inside a hidden, offscreen iframe. */
-export async function snapshotHtml(html: string, viewportWidth = 1440): Promise<Blueprint> {
+export async function snapshotHtml(
+  html: string,
+  viewportWidth = 1440,
+  /** absolute epoch ms; measurement is abandoned when the build runs out */
+  deadline = Infinity
+): Promise<Blueprint> {
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
   frame.style.cssText = `position:fixed;left:-99999px;top:0;width:${viewportWidth}px;height:1000px;border:0;visibility:hidden;pointer-events:none;`;
@@ -368,10 +425,21 @@ export async function snapshotHtml(html: string, viewportWidth = 1440): Promise<
       frame.onload = finish;
       frame.srcdoc = html;
       setTimeout(finish, 1500);
+      /* and never past the build's own deadline, whatever the frame does */
+      const left = Math.max(0, deadline - Date.now());
+      if (left < Infinity) setTimeout(finish, Math.min(1500, left));
     });
 
     const doc = frame.contentDocument;
     if (!doc) throw new Error('Could not read the rendered document.');
+
+    /* Everything below reads layout, and the whole measurement is synchronous:
+       while it runs, no timer can fire. That is why an 80-second deadline could
+       be blown by five minutes of work — the callback that would have aborted
+       the build never got a turn. One frame here lets the caller's clock run,
+       and gives the browser a chance to finish the layout it is about to be
+       asked about. */
+    await new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 
     /* A font that never settles must not become a build that never ends.
        `fonts.ready` has no timeout of its own, so it gets one here. Measuring a
