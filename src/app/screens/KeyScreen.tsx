@@ -51,6 +51,7 @@ export default function KeyScreen() {
       accent: DEMO_SPEC.meta.accent,
       spec: DEMO_SPEC,
       demo: true,
+      runId: useApp.getState().runId + 1,
       step: 'build',
     });
   }
