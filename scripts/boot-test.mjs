@@ -1,3 +1,4 @@
+import { scratch } from './_scratch.mjs';
 /**
  * Does the built app actually mount?
  *
@@ -22,8 +23,9 @@ const storageProbe = { contents: `export { storageAvailable } from './src/lib/db
 /** bundle a small module to a data URL so it can be imported with stubs in place */
 async function build_(stdin) {
   const r = await esbuild({ stdin, bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'error', external: ['idb'] });
-  writeFileSync('.tmp/_probe.mjs', r.outputFiles[0].text);
-  return { __file: pathToFileURL(resolve('.tmp/_probe.mjs')).href, text: r.outputFiles[0].text };
+  const probe = scratch('_probe.mjs');
+  writeFileSync(probe.path, r.outputFiles[0].text);
+  return { __file: probe.url, text: r.outputFiles[0].text };
 }
 
 if (!existsSync('dist/index.html')) {

@@ -13,10 +13,9 @@
  * to 140 seconds without anything reporting a failure.
  */
 import { build } from 'esbuild';
+import { scratch } from './_scratch.mjs';
 import { JSDOM } from 'jsdom';
 import { writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>');
 const nodeRAF = (cb) => setTimeout(() => cb(Date.now()), 16);
@@ -43,9 +42,10 @@ const b = await build({
   },
   bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'error',
 });
-writeFileSync('.tmp/timeline.mjs', b.outputFiles[0].text);
+const timeline_mjs = scratch('timeline.mjs');
+writeFileSync(timeline_mjs.path, b.outputFiles[0].text);
 const { buildSite, BUDGET_MS, renderDocument, Swarm, DEMO_SPEC, planAnimation } =
-  await import(pathToFileURL(resolve('.tmp/timeline.mjs')).href);
+  await import(timeline_mjs.url);
 
 let fail = 0;
 const ok = (name, cond, detail = '') => {
