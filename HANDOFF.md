@@ -63,6 +63,19 @@ They are no longer labels on cursors. `buildSite()` in `gemini.ts` runs a conduc
 Each pass can fail without failing the build: the previous spec is kept and the report
 says so. The build HUD shows them live.
 
+## Why it used to hang on "writing the page"
+
+Gemini 2.5 Flash **thinks** by default, and thinking tokens are wall-clock. A
+structured 400-word page spent 20–60 seconds reasoning before emitting a character, on
+every call, three calls deep. `NO_THINKING` in `gemini.ts` sets
+`thinkingConfig: { thinkingBudget: 0 }` on all of them; the schema and the brief already
+constrain the answer, so the thinking bought nothing.
+
+Every request also has a hard 45-second ceiling now. A request that never resolves is
+worse than one that fails: the user has no information and no way out. And the build
+stage shows a real clock — elapsed, the typical time, where that typical sits on a bar,
+and the ceiling it will fail at, with a Stop button that aborts the request.
+
 ## The four ideas that make it work
 
 **1. The model cannot write CSS.**
@@ -111,9 +124,9 @@ pausing freezes it and changing speed changes the rate without jumping.
    typechecks and builds, but no human has seen a frame. This is the first thing to do.
 2. **The demo build is the fastest way in.** Key screen → "Watch the swarm with a sample
    page". No network, no key.
-3. **Muse passes cost round trips.** Clio and Thalia are two extra Gemini calls. If the
-   free tier rate-limits, set `withMuses: false` in `buildSite()` and only Calliope and
-   Polyhymnia (both deterministic) will run.
+3. **Muse passes cost round trips.** Clio and Thalia are two extra Gemini calls. There is
+   a "Review passes" toggle on the theme screen that turns them off; Calliope and
+   Polyhymnia are deterministic and always run.
 4. **Pages are not in the project store yet.** The workbench holds extra pages in memory;
    only the current page is written by `saveProject()`. `savePage()`/`listPages()` exist
    and are wired but the workbench does not call them yet.

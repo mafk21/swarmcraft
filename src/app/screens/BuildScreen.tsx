@@ -5,6 +5,7 @@ import { buildSite, pickTheme, GeminiError, type MuseReport } from '../../lib/ge
 import { renderDocument } from '../../lib/render';
 import { snapshotHtml } from '../../lib/blueprint';
 import { Swarm } from '../../lib/swarm';
+import { StageClock } from '../StageClock';
 import { THEMES } from '../../lib/themes';
 import type { ThemeId } from '../../lib/spec';
 
@@ -26,6 +27,7 @@ export default function BuildScreen() {
     pdf,
     demo,
     runId,
+    reviewPasses,
     patch,
     go,
     next,
@@ -49,6 +51,7 @@ export default function BuildScreen() {
   // which run has already been executed — StrictMode would otherwise fire the
   // whole pipeline (and pay for two Gemini calls) in development
   const ranFor = useRef<number | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   /* ── the whole pipeline, once ─────────────────────────────────────────── */
   useEffect(() => {
@@ -56,6 +59,8 @@ export default function BuildScreen() {
     ranFor.current = runId;
 
     let cancelled = false;
+    const ctl = new AbortController();
+    abortRef.current = ctl;
 
     (async () => {
       try {
@@ -116,7 +121,9 @@ export default function BuildScreen() {
           register,
           wanted: chosenSections,
           onMuse: (r) => setMuses((m) => [...m, r]),
-          withMuses: true,
+          onStage: (label) => setNote(label),
+          withMuses: reviewPasses,
+          signal: ctl.signal,
         });
         if (repairs.length) setGuardNotes(repairs);
         if (cancelled) return;
@@ -127,7 +134,7 @@ export default function BuildScreen() {
           setPhase('choosing-theme');
           setNote('Choosing type and colour');
           try {
-            const pick = await pickTheme(key, spec);
+            const pick = await pickTheme(key, spec, ctl.signal);
             finalSpec = {
               ...spec,
               meta: {
@@ -209,6 +216,7 @@ export default function BuildScreen() {
 
     return () => {
       cancelled = true;
+      ctl.abort();
       swarmRef.current?.stop();
       swarmRef.current = null;
     };
@@ -384,14 +392,25 @@ export default function BuildScreen() {
               left: '50%',
               top: '50%',
               transform: 'translate(-50%,-50%)',
-              textAlign: 'center',
               zIndex: 4,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 12,
             }}
           >
-            <div className="spinner" style={{ margin: '0 auto 14px' }} />
-            <p className="mono tiny dim" style={{ margin: 0, letterSpacing: '0.04em' }}>
-              {note.toUpperCase()}
+            <p className="clock-label" style={{ margin: 0 }}>
+              {note}
             </p>
+            <StageClock
+              label={note}
+              running
+              onCancel={() => {
+                abortRef.current?.abort();
+                setPhase('failed');
+                setErr('Stopped. Nothing was built.');
+              }}
+            />
           </div>
         )}
 
