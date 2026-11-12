@@ -219,7 +219,11 @@ export async function inlineMedia(html: string): Promise<string> {
 
   let out = html;
   rows.forEach((row, i) => {
-    if (!row) return;
+    if (!row) {
+      // the file is gone: strip the reference rather than shipping a dead link
+      out = out.split(`media:${ids[i]}`).join('');
+      return;
+    }
     out = out.split(`media:${ids[i]}`).join(row.data);
   });
   return out;
