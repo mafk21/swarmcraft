@@ -2,22 +2,26 @@ import { useEffect, useState } from 'react';
 import { useApp } from '../store';
 import { getApiKey, setApiKey, clearApiKey } from '../../lib/db';
 import { testKey } from '../../lib/gemini';
-import { DEMO_SPEC } from '../../lib/samples';
 
 export default function KeyScreen() {
   const { next, patch, hasKey } = useApp();
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const storageBlocked = useApp((s) => s.storageBlocked);
   const [savedMask, setSavedMask] = useState<string | null>(null);
 
   useEffect(() => {
-    getApiKey().then((k) => {
-      if (k) {
-        patch({ hasKey: true });
-        setSavedMask(`${k.slice(0, 6)}…${k.slice(-4)}`);
-      }
-    });
+    getApiKey()
+      .then((k) => {
+        if (k) {
+          patch({ hasKey: true });
+          setSavedMask(`${k.slice(0, 6)}…${k.slice(-4)}`);
+        }
+      })
+      .catch(() => {
+        /* storage refused: the note below explains it, nothing to restore */
+      });
   }, [patch]);
 
   async function submit(e: React.FormEvent) {
@@ -57,23 +61,6 @@ export default function KeyScreen() {
     patch({ hasKey: false });
     setSavedMask(null);
     setMsg({ ok: true, text: 'Key removed from this browser.' });
-  }
-
-  function demo() {
-    patch({
-      kind: 'store',
-      answers: { name: DEMO_SPEC.nav.brand, description: DEMO_SPEC.meta.description },
-      chosenSections: DEMO_SPEC.sections.map((s) => s.type),
-      themeMode: 'pick',
-      theme: DEMO_SPEC.meta.theme,
-      accent: DEMO_SPEC.meta.accent,
-      spec: DEMO_SPEC,
-      demo: true,
-      projectId: null,
-      saved: false,
-      runId: useApp.getState().runId + 1,
-      step: 'build',
-    });
   }
 
   return (
@@ -140,16 +127,17 @@ export default function KeyScreen() {
           )}
         </form>
 
-        <div className="key-split">
-          <span>or</span>
-        </div>
-
-        <button type="button" className="btn btn-ghost" onClick={demo}>
-          Watch the swarm with a sample page
-        </button>
-        <p className="hint" style={{ marginTop: 8, textAlign: 'center' }}>
-          No key needed. Builds a hand-written pottery shop and skips the model.
-        </p>
+        {storageBlocked && (
+          <div className="err">
+            <div>
+              <strong>This browser is blocking local storage</strong>
+              The key can still be used for this session, but it will not be remembered and a
+              finished site cannot be saved in the browser. A private window or a strict
+              tracking-protection setting usually causes this. Exporting a finished site to a
+              file still works.
+            </div>
+          </div>
+        )}
 
         <p className="key-note">
           Nothing you type is stored anywhere but this machine. Sites you build live in IndexedDB

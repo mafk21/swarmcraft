@@ -11,7 +11,12 @@ export default function ProjectsScreen() {
   const [confirming, setConfirming] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setRows(await listProjects());
+    try {
+      setRows(await listProjects());
+    } catch {
+      // no storage: an empty list is the honest answer, not a crash
+      setRows([]);
+    }
   }, []);
 
   useEffect(() => {

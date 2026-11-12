@@ -21,7 +21,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const b = await build({
-  stdin: { contents: `export { snapshot } from './src/lib/blueprint'; export { renderDocument } from './src/lib/render'; export { DEMO_SPEC } from './src/lib/samples';`,
+  stdin: { contents: `export { snapshot } from './src/lib/blueprint'; export { renderDocument } from './src/lib/render'; export { DEMO_SPEC } from './scripts/fixtures/sample-spec';`,
     resolveDir: process.cwd(), loader: 'ts' },
   bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'error',
 });

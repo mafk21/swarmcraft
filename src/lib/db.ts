@@ -49,7 +49,31 @@ type Schema = {
 
 let dbp: Promise<IDBPDatabase<Schema>> | null = null;
 
+/**
+ * Thrown when the browser will not give us storage at all — private windows,
+ * blocked third-party storage, a hardened profile.
+ *
+ * Callers catch it and carry on without saving rather than dying. Before this,
+ * `indexedDB.open` was called on boot with no guard: on such a browser the app
+ * threw before it rendered and the user got a white screen with no explanation.
+ */
+export class StorageUnavailable extends Error {
+  constructor() {
+    super('This browser is not allowing local storage, so nothing can be saved.');
+    this.name = 'StorageUnavailable';
+  }
+}
+
+export function storageAvailable(): boolean {
+  try {
+    return typeof indexedDB !== 'undefined' && indexedDB !== null;
+  } catch {
+    return false;
+  }
+}
+
 function db() {
+  if (!storageAvailable()) return Promise.reject(new StorageUnavailable());
   if (!dbp) {
     dbp = openDB<Schema>(DB_NAME, DB_VERSION, {
       upgrade(d) {
@@ -65,6 +89,10 @@ function db() {
           store.createIndex('projectId', 'projectId');
         }
       },
+    });
+    // a failed open must not poison every later call
+    dbp.catch(() => {
+      dbp = null;
     });
   }
   return dbp;
@@ -219,12 +247,21 @@ export async function inlineMedia(html: string): Promise<string> {
 
   let out = html;
   rows.forEach((row, i) => {
+    const token = `media:${ids[i]}`;
     if (!row) {
-      // the file is gone: strip the reference rather than shipping a dead link
-      out = out.split(`media:${ids[i]}`).join('');
+      /* The file is gone. Removing just the token leaves `src=""`, which makes
+         the browser request the page itself as an image — a broken icon and a
+         pointless request. Drop the whole tag and put the drawn placeholder
+         back, which is what the page would have rendered had the image never
+         existed. */
+      out = out.replace(
+        new RegExp(`<img[^>]*src=["']${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`, 'g'),
+        ''
+      );
+      out = out.replace(/<div class="([^"]*?) has-img">\s*<\/div>/g, '<div class="$1" aria-hidden="true"></div>');
       return;
     }
-    out = out.split(`media:${ids[i]}`).join(row.data);
+    out = out.split(token).join(row.data);
   });
   return out;
 }

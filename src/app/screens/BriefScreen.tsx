@@ -3,18 +3,25 @@ import { useApp } from '../store';
 import { KIND_BRIEFS, type Question } from '../../lib/questions';
 import { extractPdf, PdfError } from '../../lib/pdf';
 
-/** A starting point for each kind, so an empty box is not a blank stare. */
+/**
+ * What to type, not what to sell.
+ *
+ * These used to be miniature sample businesses ("I sell stoneware from a
+ * workshop in Dammam"), which is the mock data the app is not supposed to
+ * contain — and worse, someone could leave one in and build a page about a
+ * pottery that does not exist. They now say what a good brief contains.
+ */
 const PROMPT_PLACEHOLDER: Record<string, string> = {
-  store: 'I sell hand-thrown stoneware from a workshop in Dammam. About 12 pieces, priced SAR 80–300, one-off bowls and mugs. People order by WhatsApp and I ship across the Gulf in 2–3 days. I want a page that shows the pieces and makes it obvious how to buy one.',
-  restaurant: 'A small mezze restaurant on the coast road. Lunch and dinner, closed Mondays. Menu changes weekly with whatever the boats bring in. I want the menu, the hours, and a way to book a table for six or more.',
-  portfolio: 'I design printed matter — catalogues, wayfinding, the occasional poster. Six years of work, mostly museums and small publishers. I want the projects shown properly and one clear way to email me.',
-  landing: 'A one-page site for a tool that migrates warehouse systems. The pitch is: no downtime, the old system stays live until cutover. I want one action — book a 30-minute call.',
-  saas: 'A scheduling tool for clinics. Three plans. I want the pricing, what it does, and a signup.',
-  agency: 'A four-person studio doing brand and web work. I want the services, three case studies, and a contact form.',
-  blog: 'I write about food history. I want a list of posts and an about page.',
-  event: 'A one-day conference in Riyadh in March. Eight speakers. I want the schedule, the speakers and a ticket link.',
-  docs: 'Reference docs for an internal API. I want it navigable and plain.',
-  custom: 'Tell me what you want built and who it is for.',
+  store: 'What you sell, roughly how many things and at what prices, how someone orders, and where you ship. Name the pieces, not the adjectives.',
+  restaurant: 'What kind of place, when you are open, what is on the menu, and how someone books a table.',
+  portfolio: 'What you make, who you make it for, how many projects you want shown, and how someone should reach you.',
+  landing: 'The one thing the page is for, what happens when someone takes that action, and the strongest fact you have to support it.',
+  saas: 'What the product does, who it is for, your plans and prices, and how someone signs up.',
+  agency: 'The services, who they are for, and the work you can point to by name.',
+  blog: 'What you write about, roughly how many posts, and anything a reader should know up front.',
+  event: 'What the event is, when and where, who is speaking, and how someone gets a ticket.',
+  docs: 'What the documentation covers, who reads it, and the main sections you want.',
+  custom: 'What you want built, who it is for, what should be on it, and how someone should get in touch.',
 };
 
 export default function BriefScreen() {

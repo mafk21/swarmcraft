@@ -20,7 +20,7 @@ const require = createRequire(import.meta.url);
 const bundle = await build({
   stdin: {
     contents: `
-      export { DEMO_SPEC } from './src/lib/samples';
+      export { DEMO_SPEC } from './scripts/fixtures/sample-spec';
       export { renderDocument } from './src/lib/render';
       export { snapshot } from './src/lib/blueprint';
       export { newSection } from './src/lib/presets';

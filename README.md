@@ -2,10 +2,14 @@
 
 A local app that builds you a real website.
 
-You answer a few questions, choose the kind of site and which sections it gets, then
-nine cursors draw the page in front of you — crosshair-dragged boxes with live W×H
-badges, typed headlines with a caret, ruled lines, ruler guides — and the finished
-interactive site fades in underneath. Then you export it.
+Choose what kind of site it is, write the brief in one box (optionally attach a PDF
+and its text is used too), pick the sections and a theme, then nine cursors draw the page
+in front of you — crosshair-dragged boxes with live W×H badges, typed headlines with a
+caret, ruled lines, ruler guides — and the finished interactive site fades in underneath.
+Then you export it as plain HTML you own.
+
+A build is one request to Gemini and makes the page visible **inside 80 seconds**, usually
+in about 22. That limit is enforced, not hoped for: see the budget section of HANDOFF.md.
 
 It runs on your machine at `localhost:5173`. No account, no server, no extension. Your
 own Gemini key, stored in your own browser.
@@ -15,7 +19,12 @@ npm install
 npm run dev
 ```
 
-Node 22+. `npm run build` and `npm run typecheck` pass.
+Node 22+. `npm run typecheck` passes and `npm run build` produces `dist/`.
+
+`npm test` runs the whole regression suite against the real modules — boot, page
+measurement, animation scheduling, the spec contract, the time budget, and the
+end-to-end timeline. It does not need a browser or an API key, and it fails if a build
+could ever exceed 90 seconds.
 
 ## How to read this repo
 

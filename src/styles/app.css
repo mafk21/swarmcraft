@@ -1170,23 +1170,6 @@
   color: var(--t2);
 }
 
-.key-split {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 20px 0;
-  color: var(--t3);
-  font-size: 0.75rem;
-}
-
-.key-split::before,
-.key-split::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--l2);
-}
-
 
 /* ── stage clock ───────────────────────────────────────────────────────── */
 
@@ -1288,37 +1271,6 @@
   text-transform: uppercase;
 }
 
-
-.review-toggle {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: 0.75rem;
-  color: var(--t2);
-  cursor: pointer;
-  max-width: 320px;
-}
-
-.review-toggle input {
-  margin-top: 1px;
-  accent-color: var(--t0);
-  width: 14px;
-  height: 14px;
-  flex: none;
-}
-
-.review-toggle span {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.review-toggle em {
-  font-style: normal;
-  color: var(--t3);
-  font-size: 0.6875rem;
-  line-height: 1.4;
-}
 
 /* the brief: the box the whole page is built from */
 .prompt-box {

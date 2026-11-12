@@ -60,9 +60,10 @@ type S = {
   saved: boolean;
 
   error: string | null;
+  /** the browser will not give us IndexedDB: work, but do not promise saving */
+  storageBlocked: boolean;
   busy: boolean;
   pdf: { name: string; pages: number; chars: number; text: string } | null;
-  demo: boolean;
   /** increments each time a build is requested; keys the build effect */
   runId: number;
 
@@ -90,9 +91,9 @@ const initial = {
   projectId: null,
   saved: false,
   error: null,
+  storageBlocked: false,
   busy: false,
   pdf: null,
-  demo: false,
   runId: 0,
 };
 
