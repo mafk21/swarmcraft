@@ -59,33 +59,41 @@ export type AccentId = (typeof ACCENTS)[number];
 
 /* ── section schemas ─────────────────────────────────────────────────────── */
 
+/**
+ * Every object in a section is strict. Without this, zod silently STRIPS
+ * unknown keys — which would mean a model could smuggle {"styles": "..."} into
+ * a section and have it quietly dropped rather than rejected. Dropped is safe;
+ * rejected is honest. We want rejected.
+ */
+const strict = <T extends z.ZodRawShape>(shape: T) => z.object(shape).strict();
+
 const nonEmpty = z.string().trim().min(1).max(400);
 const short = z.string().trim().min(1).max(120);
 const body = z.string().trim().min(1).max(1200);
 
-const HeroSection = z.object({
+const HeroSection = strict({
   type: z.literal('hero'),
   eyebrow: short.optional(),
   headline: z.string().trim().min(1).max(90),
   sub: z.string().trim().min(1).max(240),
-  cta: z.object({ label: short, href: short }).optional(),
+  cta: strict({ label: short, href: short }).optional(),
 });
 
-const FeaturesSection = z.object({
+const FeaturesSection = strict({
   type: z.literal('features'),
   heading: short,
   items: z
-    .array(z.object({ title: short, body }))
+    .array(strict({ title: short, body }))
     .min(3)
     .max(6),
 });
 
-const PricingSection = z.object({
+const PricingSection = strict({
   type: z.literal('pricing'),
   heading: short,
   tiers: z
     .array(
-      z.object({
+      strict({
         name: short,
         price: short,
         period: short.optional(),
@@ -98,12 +106,12 @@ const PricingSection = z.object({
     .max(4),
 });
 
-const ProductsSection = z.object({
+const ProductsSection = strict({
   type: z.literal('products'),
   heading: short,
   items: z
     .array(
-      z.object({
+      strict({
         name: short,
         price: short,
         note: short.optional(),
@@ -113,36 +121,36 @@ const ProductsSection = z.object({
     .max(12),
 });
 
-const TestimonialsSection = z.object({
+const TestimonialsSection = strict({
   type: z.literal('testimonials'),
   heading: short,
   items: z
-    .array(z.object({ quote: nonEmpty, author: short, role: short.optional() }))
+    .array(strict({ quote: nonEmpty, author: short, role: short.optional() }))
     .min(2)
     .max(6),
 });
 
-const FaqSection = z.object({
+const FaqSection = strict({
   type: z.literal('faq'),
   heading: short,
-  items: z.array(z.object({ q: short, a: body })).min(3).max(8),
+  items: z.array(strict({ q: short, a: body })).min(3).max(8),
 });
 
-const AboutSection = z.object({
+const AboutSection = strict({
   type: z.literal('about'),
   heading: short,
   body: z.array(body).min(1).max(4),
 });
 
-const MenuSection = z.object({
+const MenuSection = strict({
   type: z.literal('menu'),
   heading: short,
   groups: z
     .array(
-      z.object({
+      strict({
         name: short,
         items: z
-          .array(z.object({ name: short, price: short, note: short.optional() }))
+          .array(strict({ name: short, price: short, note: short.optional() }))
           .min(2)
           .max(14),
       })
@@ -151,28 +159,28 @@ const MenuSection = z.object({
     .max(6),
 });
 
-const GallerySection = z.object({
+const GallerySection = strict({
   type: z.literal('gallery'),
   heading: short.optional(),
-  items: z.array(z.object({ title: short, caption: short.optional() })).min(3).max(9),
+  items: z.array(strict({ title: short, caption: short.optional() })).min(3).max(9),
 });
 
-const StatsSection = z.object({
+const StatsSection = strict({
   type: z.literal('stats'),
   items: z
-    .array(z.object({ value: short, label: short }))
+    .array(strict({ value: short, label: short }))
     .min(3)
     .max(4),
 });
 
-const CtaSection = z.object({
+const CtaSection = strict({
   type: z.literal('cta'),
   heading: short,
   sub: body.optional(),
-  action: z.object({ label: short, href: short }),
+  action: strict({ label: short, href: short }),
 });
 
-const ContactSection = z.object({
+const ContactSection = strict({
   type: z.literal('contact'),
   heading: short,
   email: z.string().trim().email().optional(),
@@ -181,14 +189,14 @@ const ContactSection = z.object({
   form: z.boolean(),
 });
 
-const ScheduleSection = z.object({
+const ScheduleSection = strict({
   type: z.literal('schedule'),
   heading: short,
   days: z
     .array(
-      z.object({
+      strict({
         day: short,
-        items: z.array(z.object({ time: short, title: short })).min(1).max(10),
+        items: z.array(strict({ time: short, title: short })).min(1).max(10),
       })
     )
     .min(1)
@@ -357,4 +365,133 @@ export function validateSpec(raw: unknown): SpecResult {
     error: 'The generated site did not match the schema.',
     issues: parsed.error.issues.map((i) => `${i.path.join('.') || 'root'}: ${i.message}`),
   };
+}
+
+
+/* ============================================================================
+   Editing and duplication.
+
+   The inspector never lets a value become invalid, but these helpers keep the
+   spec correct anyway: empty strings fall back, arrays keep their shape, and
+   the discriminated union is preserved because we only mutate in place.
+   ========================================================================== */
+
+/** Path into a section: the section index, then keys. */
+export type FieldPath = (string | number)[];
+
+export function getIn(obj: unknown, path: FieldPath): unknown {
+  return path.reduce<unknown>((acc, k) => {
+    if (acc == null) return undefined;
+    return (acc as Record<string | number, unknown>)[k];
+  }, obj);
+}
+
+export function setIn<T>(obj: T, path: FieldPath, value: unknown): T {
+  if (path.length === 0) return value as T;
+  const clone = Array.isArray(obj) ? ([...obj] as unknown[]) : { ...(obj as object) };
+  const [head, ...rest] = path;
+  (clone as Record<string | number, unknown>)[head] = setIn(
+    (clone as Record<string | number, unknown>)[head],
+    rest,
+    value
+  );
+  return clone as T;
+}
+
+/**
+ * Replace a section field without breaking the union.
+ * Returns a NEW spec. If the next value would make the section invalid, the
+ * previous value is kept for that field only.
+ */
+export function editSectionField(
+  spec: SiteSpec,
+  sectionIndex: number,
+  path: FieldPath,
+  value: unknown
+): { spec: SiteSpec; rejected: boolean } {
+  const sections = [...spec.sections];
+  const current = sections[sectionIndex];
+  if (!current) return { spec, rejected: true };
+
+  const nextSection = setIn(current, path, value);
+  const check = SectionSchema.safeParse(nextSection);
+
+  if (!check.success) {
+    // The whole section failed. That can legitimately happen while a required
+    // field is mid-edit, so the caller is told and keeps what it had.
+    return { spec, rejected: true };
+  }
+
+  sections[sectionIndex] = check.data as Section;
+  return { spec: { ...spec, sections }, rejected: false };
+}
+
+/** Edit meta / nav / footer. Same rule: validate, or keep what was there. */
+export function editMeta(
+  spec: SiteSpec,
+  path: FieldPath,
+  value: unknown
+): { spec: SiteSpec; rejected: boolean } {
+  const next = setIn(spec, path, value);
+  const check = SiteSpecSchema.safeParse(next);
+  if (!check.success) return { spec, rejected: true };
+  return { spec: check.data, rejected: false };
+}
+
+/**
+ * The page in one plain string, for the public page and for showing the user
+ * exactly what they are exporting. Includes contact details so a scraper that
+ * only reads this one file still gets them.
+ */
+export function pageText(spec: SiteSpec): string {
+  const out: string[] = [
+    `${spec.meta.title}`,
+    `${spec.meta.description}`,
+    '',
+    `${spec.nav.brand}`,
+    ...spec.nav.links.map((l) => `${l.label}: ${l.href}`),
+    '',
+  ];
+
+  const walk = (value: unknown) => {
+    if (typeof value === 'string') out.push(value);
+    else if (Array.isArray(value)) value.forEach(walk);
+    else if (value && typeof value === 'object')
+      Object.entries(value as Record<string, unknown>).forEach(([k, v]) => {
+        if (k === 'type' || k === 'href') return;
+        walk(v);
+      });
+  };
+
+  walk(spec.sections);
+  out.push('', spec.footer.note);
+  return out.join('\n');
+}
+
+/**
+ * Duplicate a section and append it. Used by the "add a section" control so
+ * people are not forced back through the whole funnel to add a second FAQ.
+ */
+export function duplicateSection(spec: SiteSpec, index: number): SiteSpec | null {
+  const src = spec.sections[index];
+  if (!src) return null;
+  if (spec.sections.length >= 9) return null;
+  const copy = JSON.parse(JSON.stringify(src)) as Section;
+  return { ...spec, sections: [...spec.sections, copy] };
+}
+
+export function removeSection(spec: SiteSpec, index: number): SiteSpec | null {
+  // the hero is structural; never drop it, and never go below the schema floor
+  if (spec.sections[index]?.type === 'hero') return null;
+  if (spec.sections.length <= 3) return null;
+  return { ...spec, sections: spec.sections.filter((_, i) => i !== index) };
+}
+
+export function moveSection(spec: SiteSpec, index: number, delta: number): SiteSpec {
+  const to = index + delta;
+  if (to < 0 || to >= spec.sections.length) return spec;
+  const sections = [...spec.sections];
+  const [item] = sections.splice(index, 1);
+  sections.splice(to, 0, item);
+  return { ...spec, sections };
 }

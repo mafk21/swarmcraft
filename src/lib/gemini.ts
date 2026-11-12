@@ -12,7 +12,7 @@
 import { SITE_KINDS } from './spec';
 import { THEME_IDS, ACCENTS, type SiteSpec } from './spec';
 import { KIND_BRIEFS } from './questions';
-import { validateSpec } from './spec';
+import { validateSpec, findSlop } from './spec';
 
 const MODEL = 'gemini-2.5-flash';
 const ENDPOINT = (model: string, key: string) =>
@@ -238,6 +238,49 @@ export async function buildSpec(
       `The generated content did not pass validation: ${result.issues.slice(0, 3).join('; ')}`,
       200
     );
+  }
+
+  /* ── Melpomene: the slop guard ────────────────────────────────────────
+     Validation only proves the shape is right. This proves the words are.
+     One rewrite, naming the exact offending phrases, then we accept.    */
+
+  const findings = findSlop(result.spec);
+  if (findings.length > 0) {
+    const banned = [...new Set(findings.map((f) => f.phrase))];
+    const guarded = await call(
+      key,
+      {
+        ...base,
+        contents: [
+          ...base.contents,
+          { role: 'model', parts: [{ text: JSON.stringify(result.spec) }] },
+          {
+            role: 'user',
+            parts: [
+              {
+                text: `That draft used banned marketing phrases: ${banned.join(
+                  ', '
+                )}. Rewrite the whole object with every one of them gone. Keep every fact the user gave you, keep the same sections, keep the same facts array. Change only the wording that was flagged and anything that depended on it.`,
+              },
+            ],
+          },
+        ],
+      },
+      signal
+    );
+
+    const second = validateSpec(guarded);
+    if (second.ok && findSlop(second.spec).length === 0) {
+      return { spec: second.spec, repairs: [...result.repairs, 'rewrote marketing phrases'] };
+    }
+    // the rewrite was worse or also sloppy — keep the first, and say so
+    return {
+      spec: result.spec,
+      repairs: [
+        ...result.repairs,
+        `left ${banned.length} phrase(s) in: ${banned.slice(0, 3).join(', ')}`,
+      ],
+    };
   }
 
   return { spec: result.spec, repairs: result.repairs };

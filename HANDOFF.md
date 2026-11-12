@@ -39,12 +39,18 @@ The whole path works end to end:
 6. **Build** — Gemini returns a `SiteSpec`, `render()` produces a complete HTML
    document, `snapshotHtml()` measures it in a hidden iframe, `Swarm` rebuilds those
    measurements on a canvas, then the real iframe fades in.
-7. **Result** — full-page preview, save to IndexedDB, export standalone HTML.
+7. **Projects** — a real list: open, rename, delete (with confirmation). Saved sites
+   reopen at the workbench, and saving updates in place instead of duplicating.
+8. **Result** — a workbench: live preview beside an inspector that edits every field of
+   every section type, plus theme, accent, brand, nav and footer. Add, duplicate, reorder
+   and remove sections. Export standalone HTML, replay the build from the edited page.
 
 ## The four ideas that make it work
 
 **1. The model cannot write CSS.**
-`SiteSpecSchema` is `.strict()`. There is no field for a style, a class, or a colour.
+Every object in the schema is `.strict()` — the spec, and all twenty-six nested objects
+inside sections. There is no field for a style, a class, or a colour, and an unknown key
+is rejected rather than silently stripped.
 The model composes typed sections and writes copy; it picks a `ThemeId` from a closed
 enum of eight. Worst case output is *plain*, never slop. This is enforced by the schema,
 not by prompting.
@@ -82,23 +88,25 @@ pausing freezes it and changing speed changes the rate without jumping.
 
 ## Known gaps, in priority order
 
-1. **No browser testing was possible in the build sandbox.** The pipeline typechecks,
-   the renderer and the scheduler are unit-verified, but the canvas has never been seen
-   running. First task: open the demo build and watch it.
-2. **Slop guard is not wired.** `findSlop()` exists in `spec.ts` and is unused. It should
-   run after `buildSpec()` and, on a hit, re-ask once for the offending sections.
-3. **Landmarks land all at once.** `advance()` completes every travel before any paint.
-   The cursors should be staggered so boxes land at different moments — this is the
-   difference between "nine cursors moved" and "nine cursors built a page."
-4. **The Muses are decoration.** Their names appear as cursor labels only. Their actual
-   responsibilities (sitemap, voice, slop, a11y) are still one monolith call.
-5. **Kind-specific section shapes are generic.** Every kind renders from the same
-   thirteen section types. A store's product grid and a portfolio's gallery should not
-   be the same component.
-6. **Edit mode does not exist.** The result screen exports but does not let you change
-   anything.
-7. **Reduced motion.** `prefers-reduced-motion` is handled in the app's styles but not in
-   the engine — it should jump to the finished state.
+1. **Never watched running.** No browser in the build sandbox (Playwright's Chromium
+   download fails, no system Chrome). The engine, renderer, editor and scheduler are
+   unit-tested headlessly, but no human has seen a frame of the canvas. First task on a
+   machine with a browser: open the demo build.
+2. **Landmarks land all at once.** Each step now gets a random stagger (700ms for boxes,
+   420ms for text), which spreads first-arrivals across ~6 of 9 lanes, but they still
+   converge more than they should. Raise the spread or bias the stagger by x-position.
+3. **The Muses are decoration.** Their names appear as cursor labels only. Sitemap,
+   voice, slop and a11y are still one monolithic call wearing nine costumes.
+4. **Kind-specific section shapes are generic.** Every kind renders from the same
+   thirteen section types. A store's product grid and a portfolio's gallery are the same
+   component.
+5. **Reduced motion.** `prefers-reduced-motion` is handled in the app's styles but not in
+   the engine — it should jump straight to the finished state.
+6. **Multi-page.** One page per site. The nav links are anchors, not routes.
+7. **No image upload.** Gallery and product sections use generated plates. There is no
+   way to bring your own photograph.
+8. **Editing is per-field, not on-canvas.** You edit in the inspector and the preview
+   re-renders. Clicking a headline in the preview does not focus its field.
 
 ## Non-negotiables
 

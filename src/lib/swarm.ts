@@ -18,7 +18,7 @@
       interactive page fades in underneath.
    ========================================================================== */
 
-import type { Blueprint, BoxNode, LineNode, LineText } from './blueprint';
+import type { Blueprint, BoxNode, LineNode, LineText, Step } from './blueprint';
 
 /* ── cursors ─────────────────────────────────────────────────────────────── */
 
@@ -155,6 +155,15 @@ export class Swarm {
     const laneFree = new Array(9).fill(0); // ms
     const lastPos = new Array(9).fill(0).map(() => ({ x: this.bp.width * 0.5, y: 200 }));
 
+    /* The stagger is what makes it look hand-made.
+       Without it every landmark inside a band completes at the same instant and
+       the page appears to assemble itself in rows. Each step instead gets a
+       small random delay of its own, so the cursor working at the left of a
+       band finishes before the one at the right. Boxes (the landmarks) get the
+       widest spread; text the narrowest, because typing already staggers. */
+    const spreadFor = (kind: Step['kind']) =>
+      kind === 'box' ? 700 : kind === 'line' ? 480 : 420;
+
     for (const step of steps) {
       // pick the lane that is free soonest and is nearest the work
       let best = 0;
@@ -171,16 +180,21 @@ export class Swarm {
       const dist = Math.hypot(lastPos[best].x - step.to.x, lastPos[best].y - step.to.y);
       const travel = Math.min(1.4, dist / 1100);
 
-      // seconds this piece of work takes
+      // seconds this piece of work takes; bigger things take longer
       const dur = 0.34 + step.weight * 0.17 + travel * 0.35;
 
-      const start = laneFree[best];
-      laneFree[best] = start + dur * 1000 + 90;
+      // this step's own jitter, so nothing lands in lockstep
+      const stagger = Math.random() * spreadFor(step.kind);
+
+      const start = laneFree[best] + stagger;
+      laneFree[best] = start + dur * 1000 + 70;
       lastPos[best] = { x: step.to.x, y: step.to.y };
 
       this.plan.push({ step, agent: best, start, dur, travel });
     }
 
+    // the landmark order is also the reading order: big surfaces first within
+    // a band, so the page has a skeleton before it has sentences
     this.plan.sort((a, b) => a.start - b.start);
     this.total = Math.max(...laneFree) + 900;
   }
