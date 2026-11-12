@@ -63,32 +63,54 @@ They are no longer labels on cursors. `buildSite()` in `gemini.ts` runs a conduc
 Each pass can fail without failing the build: the previous spec is kept and the report
 says so. The build HUD shows them live.
 
-## Why it used to hang, and why it was slow
+## Why it took 140 seconds, and what fixes it
 
-Two separate faults, both fixed.
+The brief was a finished website in 60–90 seconds. It was taking longer than two minutes,
+and the layout of the fault explains why nobody caught it: every individual ceiling looked
+reasonable, and nothing added them up.
 
-**It was slow because there were three calls.** A draft, then Clio and Thalia as separate
-model passes. Each was a full round trip with a full schema, run one after another. Their
-instructions now live in the single system prompt as rules 7 (consistency) and 8 (voice),
-and the deterministic checks still run afterwards because they are free. **One call.**
+**There were three model calls, not one.** A draft, then a repair round-trip if validation
+failed, then a slop rewrite if any banned phrase survived — each with a 40-second ceiling
+of its own. A bad draft could therefore spend 120 seconds before measuring had even begun.
+The repair and the rewrite are both gone:
+
+- *shape* — `validateSpec` repairs locally and for free: invalid sections are dropped, a
+  list longer than nine is trimmed. A page that is merely imperfect is still a page.
+- *wording* — the banned-phrase list, the section rules and the voice rules are all in
+  `SYSTEM` before the request goes out. The slop scan afterwards **reports** what survived
+  rather than spending another call to hide it.
+
+`clio`, `thalia` and `pickTheme` are deleted. They were unreferenced, and each was a
+40-second foot-gun waiting to be called again. There is now exactly one `await call(` in
+the file.
+
+**The ceilings were per stage, so they could not add up to a limit.** There is now one
+`BUDGET_MS = 80_000`, started before the first request. Each call gets
+`min(25s, budget left)`. The animation is inside the budget too: a real page is ~27s at 1×,
+so if the model used 50s the build runs faster to still land inside 80s. Every step still
+happens, just faster. The page is up inside the promise, not after it.
+
+**A deadline that only asks is not a deadline.** Aborting the request tells the network
+layer to stop, but if the implementation ignores the abort — or resolves headers and then
+never finishes the body — the promise never settles. The same timer now also *rejects*,
+and `call()` races the fetch, the error body and the JSON body against it. Verified with a
+stub that opens headers and never writes the body: it fails at the deadline, not at forty
+seconds per attempt.
+
+**Two unbounded waits, now bounded.** `await doc.fonts.ready` had no timeout — a font that
+never settled was a build that never ended; it races a 600ms timer. And the pipeline
+awaited a bare `requestAnimationFrame` to let React commit, which never fires in a
+background tab; it races a 250ms timer.
 
 **Thinking.** Gemini 2.5 Flash reasons by default and thinking tokens are wall-clock with
-nothing to show. `NO_THINKING` sets `thinkingBudget: 0` on every call.
+nothing to show. `NO_THINKING` sets `thinkingBudget: 0` on the only call.
 
-**It hung because the timeout only covered the headers.** The old code cleared its timer as
-soon as `fetch` resolved, so a response that opened and then stalled its body waited
-forever — exactly what "reached the hard limit and nothing happened" was. One timer now
-spans fetch *and* body read, 40 seconds, and a timeout surfaces as a real error message
-rather than silence.
+**Budget now:** one model call (typically 5–15s, hard-capped at 25s or whatever is left),
+then local work — a few hundred milliseconds to measure the DOM, then the build animation,
+which runs at 1× by default, adapts its speed to what is left, and can be skipped.
+**80 seconds is the hard limit and `npm test` fails if it is raised above 90.**
 
-The stage clock shows elapsed, the typical duration, where typical sits on the bar, and
-the ceiling it will fail at, with Stop.
-
-**Budget now:** one model call of roughly 5–12 seconds, then local work — a few hundred
-milliseconds to measure the DOM, and the build animation itself, which runs at 1× by
-default and can be skipped. Under a minute and a half for the whole funnel.
-
-## The four ideas that make it work## The four ideas that make it work
+## The four ideas that make it work## The four ideas that make it work## The four ideas that make it work
 
 **1. The model cannot write CSS.**
 Every object in the schema is `.strict()` — the spec, and all twenty-six nested objects

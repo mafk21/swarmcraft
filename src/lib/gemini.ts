@@ -175,9 +175,26 @@ class GeminiError extends Error {
   }
 }
 
-const TIMEOUT_MS = 40_000;
+const TIMEOUT_MS = 25_000;
 
-async function call(key: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
+/**
+ * The hard limit for the whole build, animation included.
+ *
+ * There is one budget and everything draws from it: each model call is given
+ * whatever is LEFT rather than a private ceiling of its own. Before this
+ * existed the ceilings were 40s for writing, 40s for a repair round-trip and
+ * 40s for a slop rewrite — each reasonable alone, together two minutes of
+ * silence, which is exactly what the user got.
+ */
+export const BUDGET_MS = 80_000;
+
+async function call(
+  key: string,
+  body: unknown,
+  signal?: AbortSignal,
+  /** absolute epoch ms; the call is aborted when the budget passes */
+  deadline = Infinity
+): Promise<unknown> {
   /* The ceiling has to cover the BODY, not just the headers.
      The previous version cleared the timer as soon as `fetch` resolved, so a
      stream that opened and then stalled hung forever — the clock ran past the
@@ -187,18 +204,49 @@ async function call(key: string, body: unknown, signal?: AbortSignal): Promise<u
   signal?.addEventListener('abort', onAbort, { once: true });
 
   let timedOut = false;
+  const remaining = Math.max(0, deadline - Date.now());
+  const allowed = Math.min(TIMEOUT_MS, remaining);
+
+  /* The timer does two things, and both matter.
+     Aborting the request tells the network layer to stop. But a deadline that
+     only *asks* to stop is not a deadline: if the implementation ignores the
+     abort — or resolves the headers and then never finishes the body — the
+     promise would never settle and the build would sit there past its limit.
+     So the same timer also rejects, and that rejection is what call() returns.
+     Whatever the fetch does afterwards is ignored. */
+  let trip: (e: Error) => void = () => {};
+  const guard = new Promise<never>((_, reject) => {
+    trip = reject;
+  });
   const timer = setTimeout(() => {
     timedOut = true;
     ctl.abort();
-  }, TIMEOUT_MS);
+    trip(
+      new GeminiError(
+        remaining < TIMEOUT_MS
+          ? `The build ran out of time while Google was still writing — ${Math.round(
+              remaining / 1000
+            )}s of the budget was left. Usually a rate limit. Try again.`
+          : `Google did not finish within ${Math.round(
+              allowed / 1000
+            )} seconds. Usually a rate limit or a slow connection. Try again.`,
+        408
+      )
+    );
+  }, Math.max(0, allowed));
 
   const fail = (e: unknown): never => {
+    if (timedOut) throw e instanceof GeminiError ? e : new GeminiError('Ran out of time.', 408);
     if (signal?.aborted) throw new GeminiError('Cancelled.', 0);
-    if (timedOut || (e instanceof DOMException && e.name === 'AbortError')) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
       throw new GeminiError(
-        `Google did not finish within ${Math.round(
-          TIMEOUT_MS / 1000
-        )} seconds. Usually a rate limit or a slow connection. Try again.`,
+        remaining < TIMEOUT_MS
+          ? `The build ran out of time while Google was still writing — ${Math.round(
+              remaining / 1000
+            )}s of the budget was left. Usually a rate limit. Try again.`
+          : `Google did not finish within ${Math.round(
+              allowed / 1000
+            )} seconds. Usually a rate limit or a slow connection. Try again.`,
         408
       );
     }
@@ -208,12 +256,12 @@ async function call(key: string, body: unknown, signal?: AbortSignal): Promise<u
   try {
     let res: Response;
     try {
-      res = await fetch(ENDPOINT(MODEL, key), {
+      res = await Promise.race([guard, fetch(ENDPOINT(MODEL, key), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal: ctl.signal,
-      });
+      })]);
     } catch (e) {
       return fail(e);
     }
@@ -221,14 +269,14 @@ async function call(key: string, body: unknown, signal?: AbortSignal): Promise<u
     if (!res.ok) {
       let detail = `${res.status}`;
       try {
-        const j = await res.json();
-        detail = j?.error?.message ?? detail;
+        const j = await Promise.race([guard, res.json()]);
+        detail = (j as { error?: { message?: string } })?.error?.message ?? detail;
       } catch {
         /* non-json error body */
       }
       const hint =
         res.status === 429
-          ? ' — you have hit the free tier rate limit. Wait a minute, or turn off Review passes.'
+          ? ' — you have hit the free tier rate limit. Wait a minute and try again.'
           : '';
       throw new GeminiError(`${detail}${hint}`, res.status);
     }
@@ -236,7 +284,7 @@ async function call(key: string, body: unknown, signal?: AbortSignal): Promise<u
     /* Reading the body is where it used to hang. */
     let json: unknown;
     try {
-      json = await res.json();
+      json = await Promise.race([guard, res.json()]);
     } catch (e) {
       return fail(e);
     }
@@ -295,51 +343,52 @@ export async function testKey(key: string): Promise<{ ok: boolean; message: stri
   }
 }
 
-/** Turn the interview into a validated SiteSpec, with one slop retry. */
+/**
+ * Turn the interview into a validated SiteSpec.
+ *
+ * ONE call. No repair round-trip, no rewrite pass, no retry of any kind.
+ *
+ * Both follow-ups used to cost a full extra request, so a bad draft made three
+ * 40-second calls before measuring had even started — which is how a hard limit
+ * of 90 seconds became a user staring at 140. What replaces them is free:
+ *
+ *   · shape   — anything the schema rejects is repaired locally in
+ *               validateSpec: bad sections are dropped, long lists trimmed. A
+ *               page that is merely imperfect is still a page.
+ *   · wording — the banned-phrase list, the section rules and the voice rules
+ *               are all in SYSTEM before the request goes out, and the slop
+ *               scan afterwards tells the user the truth instead of spending
+ *               another call to hide it.
+ *
+ * If the result cannot be salvaged we fail fast and say why rather than quietly
+ * paying for another attempt.
+ */
 export async function buildSpec(
   key: string,
   kind: (typeof SITE_KINDS)[number],
   answers: AnswerMap,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  deadline = Infinity
 ): Promise<{ spec: SiteSpec; repairs: string[] }> {
-  const base = {
-    systemInstruction: { parts: [{ text: SYSTEM }] },
-    contents: [{ role: 'user', parts: [{ text: briefPrompt(kind, answers) }] }],
-    generationConfig: {
-      temperature: 0.72,
-      topP: 0.9,
-      responseMimeType: 'application/json',
-      responseSchema: RESPONSE_SCHEMA,
-      maxOutputTokens: 3000,
-      ...NO_THINKING,
-    },
-  };
-
-  let raw = await call(key, base, signal);
-  let result = validateSpec(raw);
-
-  if (!result.ok) {
-    // one repair round-trip with the validation errors attached
-    const repaired = await call(
-      key,
-      {
-        ...base,
-        contents: [
-          ...base.contents,
-          {
-            role: 'user',
-            parts: [
-              {
-                text: `That response failed validation with these errors:\n${result.issues.slice(0, 8).join('\n')}\n\nReturn the whole object again, corrected. Same rules.`,
-              },
-            ],
-          },
-        ],
+  const raw = await call(
+    key,
+    {
+      systemInstruction: { parts: [{ text: SYSTEM }] },
+      contents: [{ role: 'user', parts: [{ text: briefPrompt(kind, answers) }] }],
+      generationConfig: {
+        temperature: 0.72,
+        topP: 0.9,
+        responseMimeType: 'application/json',
+        responseSchema: RESPONSE_SCHEMA,
+        maxOutputTokens: 3000,
+        ...NO_THINKING,
       },
-      signal
-    );
-    result = validateSpec(repaired);
-  }
+    },
+    signal,
+    deadline
+  );
+
+  const result = validateSpec(raw);
 
   if (!result.ok) {
     throw new GeminiError(
@@ -348,102 +397,8 @@ export async function buildSpec(
     );
   }
 
-  /* ── Melpomene: the slop guard ────────────────────────────────────────
-     Validation only proves the shape is right. This proves the words are.
-     One rewrite, naming the exact offending phrases, then we accept.    */
-
-  const findings = findSlop(result.spec);
-  if (findings.length > 0) {
-    const banned = [...new Set(findings.map((f) => f.phrase))];
-    const guarded = await call(
-      key,
-      {
-        ...base,
-        contents: [
-          ...base.contents,
-          { role: 'model', parts: [{ text: JSON.stringify(result.spec) }] },
-          {
-            role: 'user',
-            parts: [
-              {
-                text: `That draft used banned marketing phrases: ${banned.join(
-                  ', '
-                )}. Rewrite the whole object with every one of them gone. Keep every fact the user gave you, keep the same sections, keep the same facts array. Change only the wording that was flagged and anything that depended on it.`,
-              },
-            ],
-          },
-        ],
-      },
-      signal
-    );
-
-    const second = validateSpec(guarded);
-    if (second.ok && findSlop(second.spec).length === 0) {
-      return { spec: second.spec, repairs: [...result.repairs, 'rewrote marketing phrases'] };
-    }
-    // the rewrite was worse or also sloppy — keep the first, and say so
-    return {
-      spec: result.spec,
-      repairs: [
-        ...result.repairs,
-        `left ${banned.length} phrase(s) in: ${banned.slice(0, 3).join(', ')}`,
-      ],
-    };
-  }
-
   return { spec: result.spec, repairs: result.repairs };
 }
-
-/** Ask Gemini to pick a theme for a finished spec. */
-export async function pickTheme(
-  key: string,
-  spec: SiteSpec,
-  signal?: AbortSignal
-): Promise<{ theme: (typeof THEME_IDS)[number]; accent: (typeof ACCENTS)[number]; reason: string }> {
-  const raw = (await call(
-    key,
-    {
-      systemInstruction: {
-        parts: [
-          {
-            text: 'You choose typographic themes for websites. Reply with JSON only. Pick the theme whose character fits the subject, not the trendiest one.',
-          },
-        ],
-      },
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: `Subject: ${spec.meta.title}\nDescription: ${spec.meta.description}\nSections: ${spec.sections
-                .map((s) => s.type)
-                .join(', ')}\n\nTheme options: editorial (serif display, generous measure), studio (tight grotesque, oversized), retail (brisk, dense grid), nordic (light, airy, muted), brutalist (monospace, hard borders), warm (soft, rounded, human), terminal (mono, dark, technical), minimal (stripped back).\n\nAccent options: ${ACCENTS.join(', ')}.`,
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.4,
-        responseMimeType: 'application/json',
-        ...NO_THINKING,
-        responseSchema: obj(
-          {
-            theme: { type: 'string', enum: [...THEME_IDS] },
-            accent: { type: 'string', enum: [...ACCENTS] },
-            reason: str(),
-          },
-          ['theme', 'accent', 'reason']
-        ),
-      },
-    },
-    signal
-  )) as { theme: (typeof THEME_IDS)[number]; accent: (typeof ACCENTS)[number]; reason: string };
-
-  return raw;
-}
-
-export { GeminiError };
-
 
 /* ============================================================================
    The Muses.
@@ -464,117 +419,6 @@ export type MuseReport = {
 };
 
 export type Revised = { spec: SiteSpec; reports: MuseReport[] };
-
-/** Clio: keep one name, price and form of address across the whole page. */
-export async function clio(
-  key: string,
-  spec: SiteSpec,
-  signal?: AbortSignal
-): Promise<Revised> {
-  const raw = (await call(
-    key,
-    {
-      systemInstruction: {
-        parts: [
-          {
-            text: 'You are a consistency editor. You are given a website as JSON. Find internal contradictions: a product priced one way in one place and another way elsewhere, a company referred to by two different names, one paragraph in British spelling and another in American, a phone number formatted two ways. Fix ONLY those. Keep the schema and every fact. Return the whole JSON.',
-          },
-        ],
-      },
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: `Fix inconsistencies only. Do not rewrite anything else.\n\n${JSON.stringify(
-                spec
-              )}`,
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.1,
-        responseMimeType: 'application/json',
-        responseSchema: RESPONSE_SCHEMA,
-        ...NO_THINKING,
-      },
-    },
-    signal
-  ));
-
-  const parsed = validateSpec(raw);
-  if (!parsed.ok) {
-    return { spec, reports: [{ muse: 'Clio', role: 'consistency', changed: false, notes: ['returned invalid, kept the original'] }] };
-  }
-
-  const diff = changedFields(spec, parsed.spec);
-  return {
-    spec: parsed.spec,
-    reports: [
-      {
-        muse: 'Clio',
-        role: 'consistency',
-        changed: diff.length > 0,
-        notes: diff.length ? diff.slice(0, 4) : ['no contradictions found'],
-      },
-    ],
-  };
-}
-
-/** Thalia: is the tone actually the tone they asked for? */
-export async function thalia(
-  key: string,
-  spec: SiteSpec,
-  register: string,
-  signal?: AbortSignal
-): Promise<Revised> {
-  if (!register.trim()) {
-    return { spec, reports: [{ muse: 'Thalia', role: 'voice', changed: false, notes: ['no tone given'] }] };
-  }
-
-  const raw = (await call(
-    key,
-    {
-      systemInstruction: {
-        parts: [
-          {
-            text: `You are a line editor with one instruction: make the copy sound like the requested register and nothing else. Every sentence must be in that register. Do not add facts, do not add sections, do not change prices, names or numbers. Return the whole JSON.`,
-          },
-        ],
-      },
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: `Requested register: ${register}\n\nRewrite the copy that does not match.\n\n${JSON.stringify(
-                spec
-              )}`,
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.5,
-        responseMimeType: 'application/json',
-        responseSchema: RESPONSE_SCHEMA,
-        ...NO_THINKING,
-      },
-    },
-    signal
-  ));
-
-  const parsed = validateSpec(raw);
-  if (!parsed.ok) {
-    return { spec, reports: [{ muse: 'Thalia', role: 'voice', changed: false, notes: ['returned invalid, kept the original'] }] };
-  }
-  const diff = changedFields(spec, parsed.spec);
-  return {
-    spec: parsed.spec,
-    reports: [{ muse: 'Thalia', role: 'voice', changed: diff.length > 0, notes: diff.length ? diff.slice(0, 4) : ['already matches'] }],
-  };
-}
 
 /**
  * Polyhymnia: accessibility. Deterministic, no model.
@@ -681,38 +525,7 @@ export function calliope(spec: SiteSpec, wanted: string[]): Revised {
   };
 }
 
-/** A readable list of what actually differs between two specs. */
-function changedFields(a: SiteSpec, b: SiteSpec): string[] {
-  const out: string[] = [];
-  const walkA = flatten(a);
-  const walkB = flatten(b);
-  for (const key of new Set([...Object.keys(walkA), ...Object.keys(walkB)])) {
-    if (walkA[key] !== walkB[key]) out.push(key);
-  }
-  return out;
-}
-
-function flatten(obj: unknown, prefix = '', acc: Record<string, string> = {}) {
-  if (obj === null || obj === undefined) {
-    acc[prefix] = String(obj);
-    return acc;
-  }
-  if (typeof obj !== 'object') {
-    acc[prefix] = String(obj);
-    return acc;
-  }
-  if (Array.isArray(obj)) {
-    obj.forEach((v, i) => flatten(v, `${prefix}[${i}]`, acc));
-    return acc;
-  }
-  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-    flatten(v, prefix ? `${prefix}.${k}` : k, acc);
-  }
-  return acc;
-}
-
-
-/* ── the conductor ───────────────────────────────────────────────────────── */
+export { GeminiError };
 
 export type BuiltSite = { spec: SiteSpec; reports: MuseReport[]; repairs: string[] };
 
@@ -739,6 +552,8 @@ export async function buildSite(
     /** fired BEFORE each stage, so the UI can label and time it honestly */
     onStage?: (label: string) => void;
     signal?: AbortSignal;
+    /** absolute epoch ms for the WHOLE build; every model call shares it */
+    deadline?: number;
   } = {}
 ): Promise<BuiltSite> {
   const reports: MuseReport[] = [];
@@ -749,7 +564,13 @@ export async function buildSite(
   };
 
   opts.onStage?.('Writing the page');
-  const { spec, repairs } = await buildSpec(key, kind, answers, opts.signal);
+  const { spec, repairs } = await buildSpec(
+    key,
+    kind,
+    answers,
+    opts.signal,
+    opts.deadline ?? Date.now() + BUDGET_MS
+  );
   let current = spec;
 
   // Calliope: structural, free, and it cannot be left to the model

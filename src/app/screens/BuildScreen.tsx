@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../store';
 import { getApiKey } from '../../lib/db';
-import { buildSite, GeminiError, type MuseReport } from '../../lib/gemini';
+import { buildSite, GeminiError, BUDGET_MS, type MuseReport } from '../../lib/gemini';
 import { renderDocument } from '../../lib/render';
 import { snapshotHtml } from '../../lib/blueprint';
 import { Swarm } from '../../lib/swarm';
@@ -14,6 +14,33 @@ function stageWidth() {
 }
 
 type Phase = 'writing' | 'choosing-theme' | 'measuring' | 'building' | 'done' | 'failed';
+
+/**
+ * Give a step a hard stop against the shared deadline.
+ *
+ * Measuring is local and normally takes under a second, but it renders a whole
+ * document in a hidden iframe — that is still work that can wedge, and when it
+ * did there was nothing above it to call time. Now it either returns or the
+ * build says it ran out of time.
+ */
+function raceDeadline<T>(work: Promise<T>, deadline: number): Promise<T> {
+  const left = Math.max(0, deadline - Date.now());
+  return Promise.race([
+    work,
+    new Promise<T>((_, reject) =>
+      setTimeout(
+        () =>
+          reject(
+            new GeminiError(
+              'The build ran out of time while measuring the page. Try fewer sections.',
+              408
+            )
+          ),
+        left
+      )
+    ),
+  ]);
+}
 
 export default function BuildScreen() {
   const {
@@ -107,6 +134,12 @@ export default function BuildScreen() {
         if (!key) throw new Error('No API key saved. Go back and add one.');
         if (!kind) throw new Error('No site kind chosen.');
 
+        /* One deadline for everything from here on. The model gets what is
+           left of it, the animation gets the rest, and nothing gets an
+           unbounded wait of its own. */
+        const startedAt = Date.now();
+        const deadline = startedAt + BUDGET_MS;
+
         setNote('Writing the page');
         const enriched = {
           ...answers,
@@ -121,6 +154,7 @@ export default function BuildScreen() {
           onMuse: (r) => setMuses((m) => [...m, r]),
           onStage: (label) => setNote(label),
           signal: ctl.signal,
+          deadline,
         });
         if (repairs.length) setGuardNotes(repairs);
         if (cancelled) return;
@@ -150,14 +184,25 @@ export default function BuildScreen() {
         /* render the real document */
         const html = renderDocument(finalSpec);
         setHtml(html);
-        // let React commit the iframe before we start measuring/animating
-        await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+        // Let React commit the iframe before measuring. `requestAnimationFrame`
+        // alone is a trap: in a background tab it never fires, so the pipeline
+        // would wait for a frame that never comes. Race it against a timer.
+        await new Promise<void>((r) => {
+          let settled = false;
+          const done = () => {
+            if (settled) return;
+            settled = true;
+            r();
+          };
+          requestAnimationFrame(() => setTimeout(done, 0));
+          setTimeout(done, 250);
+        });
         if (cancelled) return;
 
         /* measure it, offscreen */
         setPhase('measuring');
         setNote('Measuring the page');
-        const bp = await snapshotHtml(html, stageWidth());
+        const bp = await raceDeadline(snapshotHtml(html, stageWidth()), deadline);
         if (cancelled) return;
         patch({ blueprint: bp });
 
@@ -175,9 +220,16 @@ export default function BuildScreen() {
         window.addEventListener('resize', onResize);
 
         // let one frame paint the blank page before the swarm starts
+        /* The animation is part of the budget, not a bonus on the end of it.
+           A real page is ~27s of drawing at 1x; if the model used 50s we run at
+           a speed that still lands inside the 80s promise. Perceived as brisk,
+           not truncated — every step still happens, just faster. */
+        const left = Math.max(0, deadline - Date.now());
+        const buildSpeed = Math.max(1, Math.min(3, swarm.duration / Math.max(1, left - 1500)));
+        setSpeed(buildSpeed);
         requestAnimationFrame(() => {
           swarm.play({
-            speed: 1,
+            speed: buildSpeed,
             onProgress: (p) => setProgress(p),
             onDone: () => {
               setPhase('done');
@@ -282,8 +334,9 @@ export default function BuildScreen() {
             </div>
           </div>
           <p className="tiny dim" style={{ lineHeight: 1.6 }}>
-            If this was a rate limit, waiting sixty seconds is usually enough. The free tier
-            allows a handful of requests per minute.
+            {err?.startsWith('The build ran out of time') || err?.includes('did not finish')
+              ? 'Google was still writing when the 80-second limit ran out. The free tier is a handful of requests per minute, so waiting a minute usually clears it. Try again — nothing was charged for a page that never arrived.'
+              : 'A build is one request and has 80 seconds to land. If the key is fine, waiting a minute and trying again is usually enough.'}
           </p>
           <div className="row" style={{ gap: 8 }}>
             <button className="btn btn-primary" onClick={() => go('theme')}>
