@@ -127,21 +127,28 @@ function briefPrompt(kind: keyof typeof KIND_BRIEFS, answers: AnswerMap): string
 
 /* ── schema the model must satisfy ───────────────────────────────────────── */
 
+/* The section discriminator.
+   This used `{ const: 'hero' }`, which is valid JSON Schema and which Gemini's
+   responseSchema rejects outright: "Unknown name const". The OpenAPI subset it
+   accepts has no `const`, so a single-value `enum` is the supported spelling —
+   same meaning, accepted, and the model cannot emit anything else. */
+const oneOf = (v: string) => ({ type: 'string' as const, enum: [v] });
+
 const sectionUnion = {
   anyOf: [
-    obj({ type: { const: 'hero' }, eyebrow: str(), headline: str(), sub: str(), cta: optObj({ label: str(), href: str() }) }, ['type', 'headline', 'sub']),
-    obj({ type: { const: 'features' }, heading: str(), items: arr(obj({ title: str(), body: str() }, ['title', 'body']), 3, 6) }, ['type', 'heading', 'items']),
-    obj({ type: { const: 'pricing' }, heading: str(), tiers: arr(obj({ name: str(), price: str(), period: optStr(), features: arr(str(), 2, 8), cta: str(), featured: { type: 'boolean' } }, ['name', 'price', 'features', 'cta']), 2, 4) }, ['type', 'heading', 'tiers']),
-    obj({ type: { const: 'products' }, heading: str(), items: arr(obj({ name: str(), price: str(), note: optStr() }, ['name', 'price']), 3, 12) }, ['type', 'heading', 'items']),
-    obj({ type: { const: 'testimonials' }, heading: str(), items: arr(obj({ quote: str(), author: str(), role: optStr() }, ['quote', 'author']), 2, 6) }, ['type', 'heading', 'items']),
-    obj({ type: { const: 'faq' }, heading: str(), items: arr(obj({ q: str(), a: str() }, ['q', 'a']), 3, 8) }, ['type', 'heading', 'items']),
-    obj({ type: { const: 'about' }, heading: str(), body: arr(str(), 1, 4) }, ['type', 'heading', 'body']),
-    obj({ type: { const: 'menu' }, heading: str(), groups: arr(obj({ name: str(), items: arr(obj({ name: str(), price: str(), note: optStr() }, ['name', 'price']), 2, 14) }, ['name', 'items']), 1, 6) }, ['type', 'heading', 'groups']),
-    obj({ type: { const: 'gallery' }, heading: optStr(), items: arr(obj({ title: str(), caption: optStr() }, ['title']), 3, 9) }, ['type', 'items']),
-    obj({ type: { const: 'stats' }, items: arr(obj({ value: str(), label: str() }, ['value', 'label']), 3, 4) }, ['type', 'items']),
-    obj({ type: { const: 'cta' }, heading: str(), sub: optStr(), action: obj({ label: str(), href: str() }, ['label', 'href']) }, ['type', 'heading', 'action']),
-    obj({ type: { const: 'contact' }, heading: str(), email: optStr(), phone: optStr(), address: optStr(), form: { type: 'boolean' } }, ['type', 'heading', 'form']),
-    obj({ type: { const: 'schedule' }, heading: str(), days: arr(obj({ day: str(), items: arr(obj({ time: str(), title: str() }, ['time', 'title']), 1, 10) }, ['day', 'items']), 1, 7) }, ['type', 'heading', 'days']),
+    obj({ type: oneOf('hero'), eyebrow: str(), headline: str(), sub: str(), cta: optObj({ label: str(), href: str() }) }, ['type', 'headline', 'sub']),
+    obj({ type: oneOf('features'), heading: str(), items: arr(obj({ title: str(), body: str() }, ['title', 'body']), 3, 6) }, ['type', 'heading', 'items']),
+    obj({ type: oneOf('pricing'), heading: str(), tiers: arr(obj({ name: str(), price: str(), period: optStr(), features: arr(str(), 2, 8), cta: str(), featured: { type: 'boolean' } }, ['name', 'price', 'features', 'cta']), 2, 4) }, ['type', 'heading', 'tiers']),
+    obj({ type: oneOf('products'), heading: str(), items: arr(obj({ name: str(), price: str(), note: optStr() }, ['name', 'price']), 3, 12) }, ['type', 'heading', 'items']),
+    obj({ type: oneOf('testimonials'), heading: str(), items: arr(obj({ quote: str(), author: str(), role: optStr() }, ['quote', 'author']), 2, 6) }, ['type', 'heading', 'items']),
+    obj({ type: oneOf('faq'), heading: str(), items: arr(obj({ q: str(), a: str() }, ['q', 'a']), 3, 8) }, ['type', 'heading', 'items']),
+    obj({ type: oneOf('about'), heading: str(), body: arr(str(), 1, 4) }, ['type', 'heading', 'body']),
+    obj({ type: oneOf('menu'), heading: str(), groups: arr(obj({ name: str(), items: arr(obj({ name: str(), price: str(), note: optStr() }, ['name', 'price']), 2, 14) }, ['name', 'items']), 1, 6) }, ['type', 'heading', 'groups']),
+    obj({ type: oneOf('gallery'), heading: optStr(), items: arr(obj({ title: str(), caption: optStr() }, ['title']), 3, 9) }, ['type', 'items']),
+    obj({ type: oneOf('stats'), items: arr(obj({ value: str(), label: str() }, ['value', 'label']), 3, 4) }, ['type', 'items']),
+    obj({ type: oneOf('cta'), heading: str(), sub: optStr(), action: obj({ label: str(), href: str() }, ['label', 'href']) }, ['type', 'heading', 'action']),
+    obj({ type: oneOf('contact'), heading: str(), email: optStr(), phone: optStr(), address: optStr(), form: { type: 'boolean' } }, ['type', 'heading', 'form']),
+    obj({ type: oneOf('schedule'), heading: str(), days: arr(obj({ day: str(), items: arr(obj({ time: str(), title: str() }, ['time', 'title']), 1, 10) }, ['day', 'items']), 1, 7) }, ['type', 'heading', 'days']),
   ],
 };
 
@@ -209,6 +216,38 @@ const TIMEOUT_MS = 55_000;
  * silence, which is exactly what the user got.
  */
 export const BUDGET_MS = 80_000;
+
+/**
+ * Turn Google's error text into something a person can read.
+ *
+ * A schema rejection arrives as one enormous sentence with every offending path
+ * repeated: "Invalid JSON payload received. Unknown name \"const\" at
+ * 'generation_config.response_schema.properties[2].value.items.anyOf[2]...'"
+ * thirteen times over. The user was shown all of it, in a box, at 500 words.
+ * The useful part is the first clause; the paths are for me, not for them.
+ */
+function humanise(raw: string): string {
+  const text = raw.trim();
+
+  /* the schema-vocabulary failure, the one that actually happened */
+  const unknown = text.match(/Unknown name "([^"]+)"/);
+  if (unknown) {
+    return `The request shape was rejected by Google: it does not accept "${unknown[1]}" in a response schema. This is a bug in the app, not in your key or your brief. Nothing was charged.`;
+  }
+  if (/Invalid JSON payload/i.test(text)) {
+    return 'Google rejected the shape of the request. This is a bug in the app, not in your key or your brief.';
+  }
+
+  /* generic: first sentence, capped, because the rest is usually paths */
+  const firstSentence = text.split(/(?<=\.)\s/)[0] ?? text;
+  return firstSentence.length > 240 ? `${firstSentence.slice(0, 240)}…` : firstSentence;
+}
+
+function hintFor(status: number): string {
+  if (status === 429) return ' — you have hit the free tier rate limit. Wait a minute and try again.';
+  if (status === 401 || status === 403) return ' — Google did not accept the key. Check it on the Connect screen.';
+  return '';
+}
 
 async function call(
   key: string,
@@ -296,11 +335,7 @@ async function call(
       } catch {
         /* non-json error body */
       }
-      const hint =
-        res.status === 429
-          ? ' — you have hit the free tier rate limit. Wait a minute and try again.'
-          : '';
-      throw new GeminiError(`${detail}${hint}`, res.status);
+      throw new GeminiError(`${humanise(detail)}${hintFor(res.status)}`, res.status);
     }
 
     /* Reading the body is where it used to hang. */

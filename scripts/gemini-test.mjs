@@ -125,6 +125,22 @@ reset();
 respond = () => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: JSON.stringify({ meta: {} }) }] } }] } });
 await expectFail(() => g.buildSite('k', 'store', {}), /did not pass validation/, 'a spec that fails the schema says so');
 
+/* ── 3b. a schema-vocabulary rejection is explained, not dumped ──────────── */
+reset();
+respond = () => ({
+  status: 400,
+  body: { error: { message:
+    'Invalid JSON payload received. Unknown name "const" at \'generation_config.response_schema.properties[2].value.items.anyOf[0].properties[0].value\': Cannot find field. ' +
+    'Invalid JSON payload received. Unknown name "const" at \'generation_config.response_schema.properties[2].value.items.anyOf[1].properties[0].value\': Cannot find field. '.repeat(10)
+  } },
+});
+await assert.rejects(() => g.buildSite('k', 'store', {}), (e) => {
+  assert.ok(e.message.length < 300, `the message must be readable, was ${e.message.length} chars`);
+  assert.match(e.message, /does not accept "const"/, 'it must name the offending field');
+  assert.match(e.message, /bug in the app, not in your key/, 'it must say whose fault it is');
+  return true;
+}, 'a schema rejection must be humanised');
+
 /* ── 4. JSON wrapped in chatter is still recovered ───────────────────────── */
 
 reset();
