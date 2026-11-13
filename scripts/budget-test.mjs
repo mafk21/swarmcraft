@@ -149,15 +149,48 @@ ok('the budget is at or under 90 seconds', BUDGET_MS <= 90_000, `${BUDGET_MS}ms`
   ok('the repair is reported', out.repairs.some((r) => /9 sections/.test(r)), out.repairs.join('|'));
 }
 
-/* ── a rate limit fails fast and says so ────────────────────────────────── */
+/* ── a rate limit is waited out while there is budget, reported when there
+       is not ───────────────────────────────────────────────────────────────
+   The free tier is a handful of requests a minute and the user has 80 seconds.
+   Failing on the first 429 hands the retry back to the user, which is exactly
+   the "wait a minute and try again" loop they were stuck in.                */
 {
+  const page = {
+    meta: { title: 'Kiln', description: 'Pots for cooks.', theme: 'warm', accent: 'clay' },
+    nav: { brand: 'Kiln', links: [] },
+    sections: [
+      { type: 'hero', headline: 'Pots that get used', sub: 'Stoneware for home cooks.' },
+      { type: 'features', heading: 'Making', items: [
+        { title: 'Fired hot', body: 'To 1280C.' },
+        { title: 'Two hands', body: 'Two people make these.' },
+        { title: 'Ships fast', body: 'Two to three days.' },
+      ] },
+      { type: 'contact', heading: 'Write', email: 'a@b.co', form: true },
+    ],
+    footer: { note: 'Dammam' },
+    voice: { register: 'plain', facts: [] },
+  };
+  let n = 0;
+  globalThis.fetch = async () => {
+    n++;
+    return n < 3
+      ? { ok: false, status: 429, json: async () => ({ error: { message: 'Quota exceeded' } }) }
+      : { ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(page) }] } }] }) };
+  };
+  const out = await buildSpec('k', 'store', {}, undefined, Date.now() + 60_000);
+  ok('a throttled request is retried instead of failing', out && out.spec && n === 3, `${n} attempts`);
+}
+
+{
+  /* With no budget left there is nothing to wait for: say what it is. */
   globalThis.fetch = async () => ({
     ok: false, status: 429,
     json: async () => ({ error: { message: 'Quota exceeded' } }),
   });
   let err = null;
-  try { await buildSpec('k', 'store', {}, undefined, Date.now() + 60_000); } catch (e) { err = e; }
-  ok('429 is reported as a rate limit', err?.status === 429 && /rate limit/i.test(err.message), err?.message);
+  try { await buildSpec('k', 'store', {}, undefined, Date.now() + 5_000); } catch (e) { err = e; }
+  ok('429 with no budget left is reported as a rate limit',
+    err?.status === 429 && /rate limit/i.test(err.message), err?.message);
 }
 
 

@@ -18,17 +18,16 @@ import { validateSpec, findSlop } from './spec';
 /**
  * Models to try, best first.
  *
- * `gemini-2.5-flash` answers 404 "no longer available to new users" for any
- * project created recently, and Google points at `gemini-3.8-flash` instead.
- * But pinning one literal name has already broken this app once, and it will
- * break again at the next retirement — so the first choice is the moving alias
- * Google maintains, and the rest are stable fallbacks for the day the alias
- * lags behind, is overloaded (503), or is closed to a given project.
- *
- * A 404 on the model is NOT the user's fault and must never reach them as a
- * failure: it means "try the next name", which is instant and free.
+ * `gemini-2.5-flash` answers 404 for any project created recently. Pinning one
+ * literal name broke this app once and would break it again at the next
+ * retirement, so the first choice is the alias Google maintains.
  */
-const MODELS = ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.6-flash'] as const;
+const MODELS = [
+  'gemini-flash-latest',
+  'gemini-3.8-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+] as const;
 
 /** Google's "that model is unknown or closed to you" answers. Try the next name. */
 function modelGone(status: number, detail: string): boolean {
@@ -36,6 +35,36 @@ function modelGone(status: number, detail: string): boolean {
   return /no longer available|NOT_FOUND|is not found for API version|not supported for generateContent/i.test(
     detail
   );
+}
+
+/**
+ * How to make a model stop thinking.
+ *
+ * This is the bug that cost the last build, and it is not obvious: Gemini 3.x
+ * models CANNOT have thinking disabled. Sending `thinkingBudget: 0` to them is
+ * accepted and then ignored, so the model thinks at its default ("low" on
+ * 3.6/3.8 Flash) before writing a character — and thought tokens are billed
+ * against `maxOutputTokens`, so a 6000-token page can starve.
+ *
+ * `thinkingLevel` is the control that works on 3.x, but the accepted range
+ * differs per model and the wrong value is a hard 400: `minimal` is rejected
+ * outright by 3.7 and 3.8 Flash. So the mapping is explicit, and `low` is the
+ * safe floor for anything new because every non-image Gemini 3 model documents
+ * it.
+ *
+ * Never send both fields: that is a 400 on every 3.x model.
+ */
+function thinkingConfigFor(model: string): Record<string, unknown> {
+  /* 2.5 and the moving alias still take the legacy budget. */
+  if (model.includes('2.5') || model === 'gemini-flash-latest') {
+    return { thinkingBudget: 0 };
+  }
+  /* Models documented as accepting `minimal`. */
+  if (/3\.6-flash|3\.5-flash-lite|3\.1-flash-lite|3-flash/.test(model)) {
+    return { thinkingLevel: 'minimal' };
+  }
+  /* 3.7 / 3.8 Flash and anything newer: reject `minimal`, accept `low`. */
+  return { thinkingLevel: 'low' };
 }
 
 /** The model currently in use, updated once one works. */
@@ -47,7 +76,10 @@ let liveModel: string | null = null;
  * before emitting a character. We do not need that: the schema and the brief
  * already constrain the answer. Turn it off and the same draft lands in 2–5s.
  */
-const NO_THINKING = { thinkingConfig: { thinkingBudget: 0 } } as const;
+/* NOTE: thinkingConfig is no longer a shared constant. It is injected per model
+   inside call(), because `thinkingBudget: 0` is silently ignored by Gemini 3.x
+   and `thinkingLevel: 'minimal'` is a hard 400 on 3.8 Flash. Sending one shape
+   to every model is what made the app both slow and intermittently broken. */
 const ENDPOINT = (model: string, key: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
     key
@@ -251,17 +283,38 @@ function hintFor(status: number): string {
   return '';
 }
 
+/** How long silence is tolerated before a stream is declared dead. */
+let idleMs = 25_000;
+
+/** Test seam: make the silence watchdog observable without a 25s test. */
+export function setIdleTimeoutForTesting(ms: number) {
+  idleMs = ms;
+}
+
 async function call(
   key: string,
-  body: unknown,
+  body: Record<string, unknown>,
   signal?: AbortSignal,
   /** absolute epoch ms; the call is aborted when the budget passes */
   deadline = Infinity
 ): Promise<unknown> {
-  /* The ceiling has to cover the BODY, not just the headers.
-     The previous version cleared the timer as soon as `fetch` resolved, so a
-     stream that opened and then stalled hung forever — the clock ran past the
-     limit and nothing ever happened. One timer now spans the whole exchange. */
+  /* ── why this is streamed ─────────────────────────────────────────────────
+     The previous version made one blocking POST and waited for the whole body.
+     That means the ONLY thing the app knows for up to 55 seconds is silence,
+     and the failure it produced was the least useful sentence possible: "Ran
+     out of time." No stage, no progress, no way to tell a slow start from a
+     hang, and nothing to show on screen while it happened.
+
+     Streaming turns the same request into a heartbeat. Text arrives in
+     per-second pieces, which buys three things the build needs:
+       1. a stall is detected in seconds, not after the whole budget;
+       2. the screen can count the page up as it is written;
+       3. a response that dies halfway still leaves its partial text to salvage.
+
+     `alt=sse` is a query parameter, not a body field, so the request shape is
+     otherwise identical — and if a future model ignores it we fall back to
+     reading the single JSON body. */
+
   const ctl = new AbortController();
   const onAbort = () => ctl.abort();
   signal?.addEventListener('abort', onAbort, { once: true });
@@ -269,73 +322,110 @@ async function call(
   let timedOut = false;
   const remaining = Math.max(0, deadline - Date.now());
   const allowed = Math.min(TIMEOUT_MS, remaining);
+  const startedAt = Date.now();
 
-  /* The timer does two things, and both matter.
-     Aborting the request tells the network layer to stop. But a deadline that
-     only *asks* to stop is not a deadline: if the implementation ignores the
-     abort — or resolves the headers and then never finishes the body — the
-     promise would never settle and the build would sit there past its limit.
-     So the same timer also rejects, and that rejection is what call() returns.
-     Whatever the fetch does afterwards is ignored. */
+  /* No text for this long and the connection is dead, whatever the socket
+     thinks. Generous enough for the model to think before its first token,
+     short enough that the user is not left guessing for a minute. */
+  const IDLE_MS = idleMs;
+  let lastActivity = Date.now();
+  let bytes = 0;
+
   let trip: (e: Error) => void = () => {};
   const guard = new Promise<never>((_, reject) => {
     trip = reject;
   });
-  const timer = setTimeout(() => {
+
+  const timeLeft = () => Math.max(0, deadline - Date.now());
+  const outOfTime = () => {
     timedOut = true;
     ctl.abort();
-    trip(
-      new GeminiError(
-        remaining < TIMEOUT_MS
-          ? `The build ran out of time while Google was still writing — ${Math.round(
-              remaining / 1000
-            )}s of the budget was left. Usually a rate limit. Try again.`
-          : `Google did not finish within ${Math.round(
-              allowed / 1000
-            )} seconds. Usually a rate limit or a slow connection. Try again.`,
-        408
-      )
+    /* Round UP and never print zero: "within 0s" is what a sub-second budget
+       produced, and it reads as a bug in the timer rather than a fact. */
+    const spent = Math.max(1, Math.ceil((Date.now() - startedAt) / 1000));
+    return new GeminiError(
+      bytes > 0
+        ? `Google stopped sending while it was still writing — ${spent}s in. Usually a rate limit or a dropped connection. Try again.`
+        : `Google did not start answering within ${spent}s. Usually a rate limit on the free tier. Wait a minute and try again.`,
+      theBudgetWasTight ? 408 : 504
     );
-  }, Math.max(0, allowed));
+  };
+  /* `remaining < TIMEOUT_MS` means the build budget, not this call, is the
+     thing running out — which is a different sentence to the user. */
+  const theBudgetWasTight = remaining < TIMEOUT_MS;
+
+  const timer = setTimeout(() => trip(outOfTime()), Math.max(0, allowed));
+  /* A watchdog for silence. Separate from the overall timer because a build
+     that is genuinely too slow and a build that is wedged are different
+     failures and deserve different advice. */
+  const idle = setInterval(() => {
+    if (Date.now() - lastActivity > IDLE_MS) {
+      trip(
+        new GeminiError(
+          bytes > 0
+            ? 'Google went quiet in the middle of the page. That is usually a dropped connection. Try again.'
+            : 'Google accepted the request but sent nothing back. Usually a free-tier rate limit. Wait a minute and try again.',
+          504
+        )
+      );
+    }
+  }, 1000);
 
   const fail = (e: unknown): never => {
-    if (timedOut) throw e instanceof GeminiError ? e : new GeminiError('Ran out of time.', 408);
+    if (e instanceof GeminiError) throw e;
+    if (timedOut) throw outOfTime();
     if (signal?.aborted) throw new GeminiError('Cancelled.', 0);
     if (e instanceof DOMException && e.name === 'AbortError') {
+      if (timeLeft() <= 0) throw outOfTime();
       throw new GeminiError(
-        remaining < TIMEOUT_MS
-          ? `The build ran out of time while Google was still writing — ${Math.round(
-              remaining / 1000
-            )}s of the budget was left. Usually a rate limit. Try again.`
-          : `Google did not finish within ${Math.round(
-              allowed / 1000
-            )} seconds. Usually a rate limit or a slow connection. Try again.`,
-        408
+        'The connection to Google was cut off. Check your connection and try again.',
+        0
       );
     }
     throw new GeminiError('Could not reach Google. Check your connection.', 0);
   };
 
+  let text = '';
+  let finishReason = '';
+  let status = 0;
+  let detail = '';
+
   try {
+    const candidates = liveModel
+      ? [liveModel, ...MODELS.filter((m) => m !== liveModel)]
+      : [...MODELS];
+
     let res: Response | null = null;
 
-    /* Walk the candidate list while Google says the model is unknown or closed
-       to this project. A 404 here is not the user's problem: their key is fine,
-       they just have a newer project than our default assumed. Trying the next
-       name costs one round trip and usually nothing, so it happens before any
-       failure is reported. Once a name works we remember it. */
-    const candidates = liveModel ? [liveModel, ...MODELS.filter((m) => m !== liveModel)] : [...MODELS];
-    let detail = '';
-    let last = 0;
+    /* Waits, in ms, before each retry of a throttled request. Roughly 4s, 10s,
+       then 20s — long enough for a free-tier minute to roll over, short enough
+       that two retries still fit inside an 80-second build. */
+    const backoff = [4_000, 10_000, 20_000];
+    let attempt = 0;
+
     for (let i = 0; i < candidates.length; i++) {
       const model = candidates[i];
+      /* The model decides its own thinking config. Sending the wrong shape is
+         a hard 400, and sending the 2.5 budget to a 3.x model is silently
+         ignored — both were live bugs. */
+      const payload = {
+        ...body,
+        generationConfig: {
+          ...(body.generationConfig as Record<string, unknown>),
+          thinkingConfig: thinkingConfigFor(model),
+        },
+      };
+
       try {
-        res = await Promise.race([guard, fetch(ENDPOINT(model, key), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-          signal: ctl.signal,
-        })]);
+        res = await Promise.race([
+          guard,
+          fetch(`${ENDPOINT(model, key)}&alt=sse`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: ctl.signal,
+          }),
+        ]);
       } catch (e) {
         return fail(e);
       }
@@ -345,8 +435,8 @@ async function call(
         break;
       }
 
-      last = res.status;
-      detail = `${res.status}`;
+      status = res.status;
+      detail = `${status}`;
       try {
         const j = await Promise.race([guard, res.json()]);
         detail = (j as { error?: { message?: string } })?.error?.message ?? detail;
@@ -354,51 +444,109 @@ async function call(
         /* non-json error body */
       }
 
+      /* A dead model name is our problem: move on immediately, it is free. */
       const more = i < candidates.length - 1;
-      if (more && modelGone(last, detail)) continue;
-      throw new GeminiError(`${humanise(detail)}${hintFor(last)}`, last);
+      if (more && modelGone(status, detail)) continue;
+
+      /* Being throttled is NOT a reason to give up while there is budget left.
+         The user has 80 seconds and a 429 usually clears in a few. Failing
+         fast here is what turns "wait a minute and try again" into a build the
+         user has to babysit themselves. Back off and try the SAME model again,
+         because switching names will not lift a per-key rate limit. */
+      /* 429 is the free-tier shape. 503 is Google saying the model is busy,
+         which is also temporary. A plain 500 is a real error and retrying it
+         just burns the user's budget on the same failure. */
+      const throttle = status === 429 || status === 503;
+      const waitMs = backoff[attempt] ?? 0;
+      if (throttle && attempt < backoff.length && timeLeft() > waitMs + 8_000) {
+        attempt++;
+        await new Promise((r) => setTimeout(r, waitMs));
+        i--; // retry this model
+        continue;
+      }
+
+      throw new GeminiError(`${humanise(detail)}${hintFor(status)}`, status);
     }
 
-    /* Every candidate answered 404/503-with-a-model-name: nothing left to try,
-       and the loop above already threw. This guard is for the type checker. */
     if (!res) throw new GeminiError('Google accepted no model name. Try again.', 404);
-    if (!res.ok) throw new GeminiError(`${humanise(detail)}${hintFor(last)}`, last);
+    if (!res.ok) throw new GeminiError(`${humanise(detail)}${hintFor(status)}`, status);
 
-    /* Reading the body is where it used to hang. */
-    let json: unknown;
-    try {
-      json = await Promise.race([guard, res.json()]);
-    } catch (e) {
-      return fail(e);
-    }
+    /* ── read the stream, or the plain body if there is no stream ────────── */
+    const contentType = res.headers?.get?.('content-type') ?? '';
+    const looksStreamed = contentType.includes('event-stream');
 
-    const payload = json as {
-      candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
-      promptFeedback?: { blockReason?: string };
+    const takeChunk = (json: unknown) => {
+      const p = json as {
+        candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
+        promptFeedback?: { blockReason?: string };
+        error?: { message?: string };
+      };
+      if (p?.error?.message) throw new GeminiError(humanise(p.error.message), 500);
+      if (p?.promptFeedback?.blockReason) {
+        throw new GeminiError(
+          `Google refused the request: ${p.promptFeedback.blockReason}.`,
+          200
+        );
+      }
+      const piece = p?.candidates?.[0]?.content?.parts?.map((x) => x.text ?? '').join('') ?? '';
+      if (piece) text += piece;
+      if (p?.candidates?.[0]?.finishReason) finishReason = p.candidates[0].finishReason!;
+      bytes += piece.length;
+      lastActivity = Date.now();
     };
 
-    if (payload?.promptFeedback?.blockReason) {
-      throw new GeminiError(
-        `Google refused the request: ${payload.promptFeedback.blockReason}.`,
-        200
-      );
+    if (looksStreamed && res.body?.getReader) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      try {
+        for (;;) {
+          const { done, value } = await Promise.race([guard, reader.read()]);
+          if (done) break;
+          lastActivity = Date.now();
+          buffer += decoder.decode(value, { stream: true });
+          /* SSE frames are separated by a blank line. Keeping the tail in the
+             buffer is what stops a JSON object split across two reads from
+             being thrown away — the classic streaming bug. */
+          const frames = buffer.split(/\r?\n\r?\n/);
+          buffer = frames.pop() ?? '';
+          for (const frame of frames) {
+            const line = frame.split(/\r?\n/).find((l) => l.startsWith('data:'));
+            if (!line) continue;
+            const raw = line.slice(5).trim();
+            if (!raw || raw === '[DONE]') continue;
+            try {
+              takeChunk(JSON.parse(raw));
+            } catch (e) {
+              if (e instanceof GeminiError) throw e;
+              /* a keep-alive or a malformed frame is not fatal */
+            }
+          }
+        }
+      } catch (e) {
+        if (e instanceof GeminiError) throw e;
+        return fail(e);
+      }
+    } else {
+      let json: unknown;
+      try {
+        json = await Promise.race([guard, res.json()]);
+      } catch (e) {
+        return fail(e);
+      }
+      takeChunk(json);
     }
-
-    const text = payload?.candidates?.[0]?.content?.parts
-      ?.map((p) => p.text ?? '')
-      .join('');
 
     if (!text) {
-      const reason = payload?.candidates?.[0]?.finishReason ?? 'no content returned';
       throw new GeminiError(
-        reason === 'MAX_TOKENS'
+        finishReason === 'MAX_TOKENS'
           ? 'The answer was cut off before it finished. Try fewer sections.'
-          : `The model returned nothing (${reason}).`,
+          : `The model returned nothing (${finishReason || 'no content'}).`,
         200
       );
     }
 
-    const truncated = payload?.candidates?.[0]?.finishReason === 'MAX_TOKENS';
+    const truncated = finishReason === 'MAX_TOKENS';
     try {
       return JSON.parse(text);
     } catch {
@@ -407,7 +555,7 @@ async function call(
         try {
           return JSON.parse(m[0]);
         } catch {
-          /* fall through to the readable refusal below */
+          /* fall through */
         }
       }
       throw new GeminiError(
@@ -419,10 +567,10 @@ async function call(
     }
   } finally {
     clearTimeout(timer);
+    clearInterval(idle);
     signal?.removeEventListener('abort', onAbort);
   }
 }
-
 
 /**
  * Validate the key by actually generating.
@@ -459,7 +607,11 @@ export async function testKey(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: 'Reply with the single word: ready' }] }],
-            generationConfig: { maxOutputTokens: 8, temperature: 0, ...NO_THINKING },
+            generationConfig: {
+              maxOutputTokens: 8,
+              temperature: 0,
+              thinkingConfig: thinkingConfigFor(model),
+            },
           }),
           signal: ctl.signal,
         });
@@ -555,8 +707,11 @@ export async function buildSpec(
         temperature: 0.72,
         topP: 0.9,
         responseMimeType: 'application/json',
-        maxOutputTokens: 6000,
-        ...NO_THINKING,
+        /* Gemini 3.x cannot have thinking turned off, and thought tokens are
+           billed against this same budget. A nine-section page is ~4000 tokens
+           of visible text; at "low" thinking that leaves comfortable headroom.
+           At 6000 it was a coin flip that ended as "ran out of room". */
+        maxOutputTokens: 12_000,
       },
     },
     signal,

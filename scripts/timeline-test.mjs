@@ -56,9 +56,38 @@ console.log(`budget ${BUDGET_MS / 1000}s\n`);
 console.log('  model   visible   speed   drawing   verdict');
 
 for (const latency of [2000, 8000, 20000, 35000, 50000]) {
+  /* The real API streams, so silence for `latency` is not what a slow build
+     looks like — it looks like a steady trickle of text. The wait is split
+     across frames so this stays a faithful slow model rather than a dead
+     socket, which the idle watchdog is entitled to kill. */
   globalThis.fetch = async () => {
-    await new Promise((r) => setTimeout(r, latency));
-    return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(DEMO_SPEC) }] } }] }) };
+    const json = JSON.stringify(DEMO_SPEC);
+    const frames = 4;
+    const per = Math.max(1, Math.floor(json.length / frames));
+    let i = 0;
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => 'text/event-stream' },
+      body: {
+        getReader: () => ({
+          read: async () => {
+            if (i === 0) await new Promise((r) => setTimeout(r, latency / frames));
+            else await new Promise((r) => setTimeout(r, Math.min(7000, latency / frames)));
+            if (i >= frames) return { done: true, value: undefined };
+            const piece = json.slice(i * per, (i + 1) * per);
+            i++;
+            return {
+              done: false,
+              value: new TextEncoder().encode(
+                `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: piece }] } }] })}\n\n`
+              ),
+            };
+          },
+        }),
+      },
+      json: async () => ({}),
+    };
   };
 
   const t0 = Date.now();
