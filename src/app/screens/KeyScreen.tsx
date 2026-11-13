@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useApp } from '../store';
 import { getApiKey, setApiKey, clearApiKey } from '../../lib/db';
 import { testKey } from '../../lib/gemini';
+import { shortStamp } from '../../lib/version';
 
 export default function KeyScreen() {
   const { next, patch, hasKey } = useApp();
@@ -142,6 +143,12 @@ export default function KeyScreen() {
         <p className="key-note">
           Nothing you type is stored anywhere but this machine. Sites you build live in IndexedDB
           and export as plain HTML files you own.
+        </p>
+
+        {/* Which commit is on screen. If this does not match the latest commit,
+            the checkout is stale — say so before debugging anything else. */}
+        <p className="tiny dim mono" style={{ margin: 0 }} data-build-stamp>
+          build {shortStamp()}
         </p>
       </div>
     </div>
