@@ -89,7 +89,14 @@ export default function BuildScreen() {
 
     (async () => {
       try {
-        const key = await getApiKey();
+        let key: string | null = null;
+        try {
+          key = await getApiKey();
+        } catch {
+          throw new Error(
+            'This browser is blocking local storage, so the saved key cannot be read. Paste it again on the Connect screen.'
+          );
+        }
         if (!key) throw new Error('No API key saved. Go back and add one.');
         if (!kind) throw new Error('No site kind chosen.');
 

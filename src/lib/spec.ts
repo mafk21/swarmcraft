@@ -579,8 +579,48 @@ export function pageSlug(spec: SiteSpec, index: number): string {
   return index === 0 ? 'index' : base;
 }
 
+/**
+ * Can a link be honoured from this page?
+ *
+ * Anchors are only meaningful if the page has a section with that id, and
+ * `page:N` only if page N exists. Anything else (mailto, an external URL) is
+ * the user's own and is left alone.
+ */
+function canResolve(href: string, sections: Section[]): boolean {
+  if (href.startsWith('#')) {
+    const id = href.slice(1);
+    if (!id || id === 'top') return true;
+    return sections.some((s) => s.type === id);
+  }
+  if (href.startsWith('page:')) {
+    const n = Number(href.slice(5));
+    return Number.isInteger(n) && n >= 0;
+  }
+  return true;
+}
+
+function dedupeLinks<T extends { label: string; href: string }>(links: T[]): T[] {
+  const seen = new Set<string>();
+  return links.filter((l) => {
+    const key = `${l.label}|${l.href}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 /** A blank page in the same voice and theme as the home page. */
 export function newPage(from: SiteSpec, title: string): SiteSpec {
+  /* The sections a new page starts with, held in a variable because the nav
+     filter has to check anchors against THESE — not against the page the nav
+     was copied from. Filtering against `from` passed every anchor through,
+     since the home page has the very sections the links point at. */
+  const sections: Section[] = [
+    { type: 'hero', headline: title, sub: 'One sentence about what is on this page.' },
+    { type: 'about', heading: 'About this page', body: ['Replace this with what belongs here.'] },
+    { type: 'contact', heading: 'Contact', email: 'you@example.com', form: false },
+  ];
+
   return {
     meta: {
       title,
@@ -590,28 +630,16 @@ export function newPage(from: SiteSpec, title: string): SiteSpec {
     },
     nav: {
       brand: from.nav.brand,
-      // a new page needs a way back home, ahead of whatever the home page links to
-      links: [{ label: 'Home', href: 'page:0' }, ...from.nav.links].slice(0, 6),
+      /* A new page needs a way home, and it must not inherit links pointing at
+         sections it does not have — otherwise every anchor in the exported nav
+         is dead. */
+      links: dedupeLinks([
+        { label: 'Home', href: 'page:0' },
+        ...from.nav.links.filter((l) => canResolve(l.href, sections)),
+      ]).slice(0, 6),
     },
-    sections: [
-      {
-        type: 'hero',
-        headline: title,
-        sub: 'One sentence about what is on this page.',
-      },
-      {
-        type: 'about',
-        heading: 'About this page',
-        body: ['Replace this with what belongs here.'],
-      },
-      {
-        type: 'contact',
-        heading: 'Contact',
-        email: 'you@example.com',
-        form: false,
-      },
-    ],
+    sections,
     footer: { note: from.footer.note },
-    voice: { register: from.voice.register, facts: from.voice.facts },
+    voice: { register: from.voice.register, facts: [...from.voice.facts] },
   };
 }
