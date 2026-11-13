@@ -372,9 +372,130 @@ export type SpecResult =
  *  - drops sections that don't match any known type
  *  - clamps section count to 3..9
  */
+/**
+ * Remove keys that do not belong to a shape, keeping the data.
+ *
+ * `.strict()` exists so a model cannot smuggle `{"style": "..."}` past the
+ * renderer — and it is right to refuse that. But refusing the WHOLE PAGE over
+ * one stray key is the wrong trade: a model adding `className` because it is
+ * helpful should cost a repair note, not the user's entire build.
+ *
+ * So unknown keys are stripped explicitly, counted, and reported. The refusal
+ * is still honest (the user is told), and the page still exists.
+ */
+/**
+ * The allowed keys of a schema, or null.
+ *
+ * A discriminated union has no single shape, so we select the member whose
+ * discriminator matches the value. That is what makes stripping work on
+ * `sections` — the place a model is most likely to add `className`.
+ */
+function shapeOf(schema: unknown, value?: unknown): z.ZodRawShape | null {
+  if (schema instanceof z.ZodObject) return schema.shape;
+  if (schema instanceof z.ZodDiscriminatedUnion) {
+    const options = (schema as unknown as { options: unknown[] }).options ?? [];
+    for (const option of options) {
+      const shape = shapeOf(option);
+      if (!shape) continue;
+      const key = (schema as unknown as { discriminator?: string }).discriminator ?? 'type';
+      const want = (value as Record<string, unknown> | undefined)?.[key];
+      if (want === undefined) continue;
+      // compare the VALUE against the member's own literal, not against itself
+      const literal = shape[key];
+      if (literal && matchesLiteral(literal, want)) return shape;
+    }
+    // unknown discriminator: union of every member's keys, so nothing is wrongly dropped
+    const merged: z.ZodRawShape = {};
+    for (const option of options) Object.assign(merged, shapeOf(option) ?? {});
+    return Object.keys(merged).length ? merged : null;
+  }
+  return null;
+}
+
+/**
+ * Keep only the keys a shape allows, and report what went.
+ *
+ * Nested objects are handled by walking the shape: an item's allowed keys come
+ * from the item schema, not from a hard-coded list that can drift out of sync.
+ */
+function stripUnknown(schema: unknown, value: unknown): { value: unknown; removed: string[] } {
+  const removed: string[] = [];
+  const shape = shapeOf(schema, value);
+  if (!shape || !value || typeof value !== 'object' || Array.isArray(value)) {
+    return { value, removed };
+  }
+
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    const field = shape[k];
+    if (field === undefined) {
+      removed.push(k);
+      continue;
+    }
+    out[k] = stripNested(field, v, removed);
+  }
+  return { value: out, removed };
+}
+
+/** Does a zod field accept exactly this discriminator value? */
+function matchesLiteral(field: unknown, want: unknown): boolean {
+  const f = unwrap(field);
+  if (f instanceof z.ZodLiteral) return (f as unknown as { value: unknown }).value === want;
+  if (f instanceof z.ZodEnum) return ((f as z.ZodEnum<never>).options as unknown[]).includes(want);
+  if (f instanceof z.ZodUnion) {
+    return ((f as z.ZodUnion<never>).options as unknown[]).some((o) => matchesLiteral(o, want));
+  }
+  return false;
+}
+
+/** Recurse into objects and arrays so a stray key deep inside is caught too. */
+function stripNested(field: unknown, value: unknown, removed: string[]): unknown {
+  if (Array.isArray(value)) {
+    const element = elementSchema(field);
+    return value.map((v) => (element ? stripNested(element, v, removed) : v));
+  }
+  if (value && typeof value === 'object') {
+    const r = stripUnknown(unwrap(field), value);
+    removed.push(...r.removed);
+    return r.value;
+  }
+  return value;
+}
+
+/** z.array(x) → x, through optional/nullable wrappers */
+function elementSchema(field: unknown): unknown | null {
+  const f = unwrap(field);
+  return f instanceof z.ZodArray ? (f as z.ZodArray<z.ZodTypeAny>).element : null;
+}
+
+/** peel optional() and nullable() to reach the underlying type */
+function unwrap(field: unknown): unknown {
+  let f: unknown = field;
+  for (let i = 0; i < 5; i++) {
+    if (f instanceof z.ZodOptional) f = (f as z.ZodOptional<z.ZodTypeAny>).unwrap();
+    else if (f instanceof z.ZodNullable) f = (f as z.ZodNullable<z.ZodTypeAny>).unwrap();
+    else break;
+  }
+  return f;
+}
+
 export function validateSpec(raw: unknown): SpecResult {
   const repairs: string[] = [];
   let candidate: unknown = raw;
+
+  /* Strip first, judge second. Doing it the other way round silently throws
+     away every section that carried an invented key, because .strict() rejects
+     those — which is how one `className` used to cost the whole page. */
+  /* Drop keys the spec has no place for, everywhere the model might add one —
+     derived from SiteSpecSchema itself so it cannot drift from the validation
+     it is standing in for. */
+  if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+    const top = stripUnknown(SiteSpecSchema, candidate);
+    candidate = top.value;
+    if (top.removed.length) {
+      repairs.push(`removed ${top.removed.length} invented field(s)`);
+    }
+  }
 
   if (candidate && typeof candidate === 'object' && 'sections' in candidate) {
     const obj = candidate as { sections: unknown[] };
@@ -388,6 +509,23 @@ export function validateSpec(raw: unknown): SpecResult {
       if (obj.sections.length > 9) {
         obj.sections = obj.sections.slice(0, 9);
         repairs.push('trimmed to 9 sections');
+      }
+    }
+  }
+
+  /* A theme or accent the model invented is a choice we cannot render, not a
+     reason to lose the page. Fall back and say so. */
+  if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+    const meta = (candidate as Record<string, unknown>).meta;
+    if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+      const m = meta as Record<string, unknown>;
+      if (!THEME_IDS.includes(m.theme as never)) {
+        m.theme = THEME_IDS[0];
+        repairs.push('swapped an unknown theme for the default one');
+      }
+      if (!ACCENTS.includes(m.accent as never)) {
+        m.accent = ACCENTS[0];
+        repairs.push('swapped an unknown accent for the default one');
       }
     }
   }
