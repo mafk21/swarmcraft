@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useApp } from '../store';
+import { useApp, briefReady } from '../store';
 import { KIND_BRIEFS, type Question } from '../../lib/questions';
 import { extractPdf, PdfError } from '../../lib/pdf';
 
@@ -31,24 +31,26 @@ export default function BriefScreen() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfErr, setPdfErr] = useState<string | null>(null);
 
-  if (!kind) return null;
-  const brief = KIND_BRIEFS[kind];
-
   /* The flow the user asked for: name it, describe it in one box, optionally
      attach a document. The per-kind questions are still here, behind a
      disclosure — useful when someone wants to be precise, never a wall of
-     fields standing between them and the build. */
+     fields standing between them and the build.
+
+     This hook must stay above the `if (!kind)` below. Hooks cannot be called
+     conditionally: with `showDetail` declared after that early return, any
+     render where `kind` was null would call one fewer hook than the previous
+     render, and React throws "Rendered fewer hooks than expected", blanking the
+     screen. */
   const [showDetail, setShowDetail] = useState(false);
 
-  const name = String(answers.name ?? '').trim();
-  const nameOk = name.length > 0;
+  if (!kind) return null;
+  const brief = KIND_BRIEFS[kind];
 
   /* This one box is the brief. It is what the model reads as the description,
      so there is still exactly one request and one place the user's own words
      live — nothing is copied, merged or summarised first. */
   const extra = String(answers.prompt ?? '');
-  const descOk = extra.trim().length > 20;
-  const ready = nameOk && descOk;
+  const ready = briefReady(answers);
 
   async function onFile(f: File | undefined) {
     if (!f) return;

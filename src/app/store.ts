@@ -97,6 +97,19 @@ const initial = {
   runId: 0,
 };
 
+/* ── the two gates ──────────────────────────────────────────────────────────
+   A brief is ready when it has a name and enough words to build from; a spec is
+   ready when it has a hero and at least three sections. They live here, next to
+   the funnel that enforces them, so a screen cannot drift from the rule. */
+
+export const minBriefWords = 20;
+
+export function briefReady(answers: AnswerMap): boolean {
+  const name = String(answers.name ?? '').trim();
+  const brief = String(answers.prompt ?? answers.description ?? '').trim();
+  return name.length > 0 && brief.length > minBriefWords;
+}
+
 export const useApp = create<S>((set, get) => ({
   ...initial,
 
@@ -104,6 +117,16 @@ export const useApp = create<S>((set, get) => ({
 
   next: () => {
     const i = STEP_ORDER.indexOf(get().step);
+
+    /* Brief and sections render `null` without their inputs, which leaves the
+       user on a header with an empty main area and no way forward. That happens
+       if storage is blocked and a half-finished session is restored, or if a
+       keyboard shortcut skips a step. Sending them back to the step that can
+       actually collect the missing input is better than a blank page. */
+    const st = get();
+    if (st.step === 'brief' && !st.kind) return set({ step: 'kind', error: null });
+    if (st.step === 'build' && !st.theme) return set({ step: 'theme', error: null });
+
     set({ step: STEP_ORDER[Math.min(STEP_ORDER.length - 1, i + 1)], error: null });
   },
 
