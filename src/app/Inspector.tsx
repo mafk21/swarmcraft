@@ -520,9 +520,15 @@ function ImageField({
       setPreview(null);
       return;
     }
-    getMedia(src.slice(6)).then((row) => {
-      if (alive) setPreview(row?.data ?? null);
-    });
+    getMedia(src.slice(6))
+      .then((row) => {
+        if (alive) setPreview(row?.data ?? null);
+      })
+      .catch(() => {
+        /* storage unavailable: show the placeholder rather than throw inside a
+           component's effect, which would take the whole editor down */
+        if (alive) setPreview(null);
+      });
     return () => {
       alive = false;
     };

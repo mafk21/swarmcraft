@@ -103,20 +103,30 @@ export default function ResultScreen() {
   /* ── saving and export ────────────────────────────────────────────────── */
 
   async function save() {
-    const id = await saveProject(active, { id: projectId ?? undefined, kind });
-    patch({ projectId: id, saved: true });
-    toast(extra.length ? 'Saved the current page.' : 'Saved to this browser.');
+    try {
+      const id = await saveProject(active, { id: projectId ?? undefined, kind });
+      patch({ projectId: id, saved: true });
+      toast(extra.length ? 'Saved the current page.' : 'Saved to this browser.');
+    } catch {
+      toast('This browser will not let the site be saved. Export it instead.');
+    }
   }
 
   async function exportHtml() {
     const all = pages;
 
     // self-contained: swap media:<id> for the real bytes
+    const slugsAll = all.map(pageSlug);
     const files = await Promise.all(
       all.map(async (p, i) => {
-        const withMedia = await inlineMedia(
-          renderDocument(p, { index: i, exportMode: true, slugs: all.map(pageSlug) })
-        );
+        const base = renderDocument(p, { index: i, exportMode: true, slugs: slugsAll });
+        let withMedia = base;
+        try {
+          withMedia = await inlineMedia(base);
+        } catch {
+          /* no storage: the page still exports, just without the pictures */
+          withMedia = base.replace(/<img[^>]*src="media:[^"]*"[^>]*>/g, '');
+        }
         return { name: `${pageSlug(p, i)}.html`, html: withMedia };
       })
     );
