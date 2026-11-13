@@ -63,6 +63,9 @@ type S = {
   /** the browser will not give us IndexedDB: work, but do not promise saving */
   storageBlocked: boolean;
   busy: boolean;
+  /** set when a build is abandoned by a deadline; the build screen renders it
+      from the store so a dead component cannot swallow the message */
+  buildError: string | null;
   pdf: { name: string; pages: number; chars: number; text: string } | null;
   /** increments each time a build is requested; keys the build effect */
   runId: number;
@@ -93,6 +96,7 @@ const initial = {
   error: null,
   storageBlocked: false,
   busy: false,
+  buildError: null,
   pdf: null,
   runId: 0,
 };
@@ -108,6 +112,15 @@ export function briefReady(answers: AnswerMap): boolean {
   const name = String(answers.name ?? '').trim();
   const brief = String(answers.prompt ?? answers.description ?? '').trim();
   return name.length > 0 && brief.length > minBriefWords;
+}
+
+/** Record a build failure where the screen cannot lose it. */
+export function failBuild(message: string): void {
+  useApp.setState({ buildError: message });
+}
+
+export function clearBuildError(): void {
+  useApp.setState({ buildError: null });
 }
 
 export const useApp = create<S>((set, get) => ({

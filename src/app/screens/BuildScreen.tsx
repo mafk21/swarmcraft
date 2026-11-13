@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useApp } from '../store';
+import { useApp, failBuild } from '../store';
 import { getApiKey } from '../../lib/db';
 import { buildSite, GeminiError, BUDGET_MS, type MuseReport } from '../../lib/gemini';
 import { renderDocument } from '../../lib/render';
@@ -72,6 +72,7 @@ export default function BuildScreen() {
     patch,
     go,
     next,
+    buildError,
   } = useApp();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -98,6 +99,8 @@ export default function BuildScreen() {
   useEffect(() => {
     if (ranFor.current === runId) return;
     ranFor.current = runId;
+    /* a new run is not the old run's failure */
+    failBuild('');
 
     let cancelled = false;
     const ctl = new AbortController();
@@ -122,7 +125,18 @@ export default function BuildScreen() {
     const stopWatching = armDeadline({
       label: 'the build',
       budgetMs: BUDGET_MS,
-      onStop: ({ label, elapsedMs }) => failHard(label, elapsedMs),
+      onStop: ({ label, elapsedMs }) => {
+        /* Through the store as well as through local state: if this component
+           has been torn down and rebuilt, its own setState goes nowhere, but a
+           store write still reaches the screen that is on the page. */
+        failBuild(
+          `The build was still on "${label}" after ${Math.round(
+            elapsedMs / 1000
+          )}s, against a ${Math.round(BUDGET_MS / 1000)}s limit, so it was stopped. ` +
+            'Nothing was saved. If this happens with a working key, tell me — it means something is hanging outside the request itself.'
+        );
+        failHard(label, elapsedMs);
+      },
     });
 
     /* The last line of defence, and it lives out here so the cleanup above can
@@ -301,8 +315,13 @@ export default function BuildScreen() {
       cancelled = true;
       done = true;
       window.clearTimeout(watchdog);
-      clearDeadline(stopWatching);
       ctl.abort();
+      /* NOTE: the module-level deadline is deliberately NOT cleared here.
+         A teardown happens on StrictMode's throwaway first mount, and clearing
+         it there disarmed the one net that exists to survive exactly this. It
+         is cleared in the pipeline's own exits — success, failure — which are
+         the only places that mean "the build is over". If the effect is torn
+         down and never restarted, the deadline still fires and says so. */
       /* Release the guard on teardown.
          `ranFor` exists so a re-render cannot start a second build for the same
          run. But React 18 StrictMode mounts, tears down and mounts again in
@@ -375,7 +394,12 @@ export default function BuildScreen() {
 
   /* ── render ───────────────────────────────────────────────────────────── */
 
-  if (phase === 'failed') {
+  /* A failure can arrive through local state (the normal path) or through the
+     store (when the deadline fired against a component that no longer exists).
+     Either one must put the same screen up. */
+  const fatal = (buildError || null) ?? (phase === 'failed' ? err : null);
+
+  if (fatal) {
     return (
       <div className="screen" style={{ padding: '64px 24px' }}>
         <div style={{ maxWidth: 560, margin: '0 auto' }} className="stack">
@@ -385,11 +409,13 @@ export default function BuildScreen() {
           <div className="err">
             <div>
               <strong>Nothing was built</strong>
-              {err}
+              {fatal}
             </div>
           </div>
           <p className="tiny dim" style={{ lineHeight: 1.6 }}>
-            {err?.startsWith('The build ran out of time') || err?.includes('did not finish')
+            {fatal?.startsWith('The build ran out of time') ||
+            fatal?.includes('did not finish') ||
+            fatal?.includes('was still on')
               ? 'Google was still writing when the 80-second limit ran out. The free tier is a handful of requests per minute, so waiting a minute usually clears it. Try again — nothing was charged for a page that never arrived.'
               : 'A build is one request and has 80 seconds to land. If the key is fine, waiting a minute and trying again is usually enough.'}
           </p>
@@ -524,17 +550,18 @@ export default function BuildScreen() {
                  is demonstrably alive and the thing being measured is not, the
                  measuring thing should intervene. */
               onOverrun={({ label, elapsedMs }) => {
-                abortRef.current?.abort();
-                setPhase('failed');
-                setNote('Stopped');
-                setErr(
+                const message =
                   `The build was still on "${label}" after ${Math.round(
                     elapsedMs / 1000
                   )}s, against a ${Math.round(
                     BUDGET_MS / 1000
                   )}s limit, so it was stopped. Nothing was saved. ` +
-                    'If this happens with a working key, tell me — it means something is hanging outside the request itself.'
-                );
+                  'If this happens with a working key, tell me — it means something is hanging outside the request itself.';
+                abortRef.current?.abort();
+                setPhase('failed');
+                setNote('Stopped');
+                setErr(message);
+                failBuild(message);
               }}
             />
           </div>

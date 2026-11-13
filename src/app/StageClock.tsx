@@ -75,16 +75,23 @@ export function StageClock({
     if (!running) return;
     let fired = false;
     const id = window.setInterval(() => {
-      const elapsed = (Date.now() - startedAt) / 1000;
-      setSecs(elapsed);
+      /* Defensive: a timer that can throw is a timer that stops, and this one
+         is the last net. If the callback below fails, the clock must keep
+         ticking and keep counting, so nothing here is allowed to escape. */
+      try {
+        const elapsed = (Date.now() - startedAt) / 1000;
+        setSecs(elapsed);
 
-      if (!fired && elapsed > BUDGET_S + OVERRUN_GRACE_S) {
-        fired = true;
-        onOverrun?.({
-          label,
-          elapsedMs: elapsed * 1000,
-          allowedMs: BUDGET_S * 1000,
-        });
+        if (!fired && elapsed > BUDGET_S + OVERRUN_GRACE_S) {
+          fired = true;
+          onOverrun?.({
+            label,
+            elapsedMs: elapsed * 1000,
+            allowedMs: BUDGET_S * 1000,
+          });
+        }
+      } catch {
+        /* never let this interval die */
       }
     }, 100);
     return () => window.clearInterval(id);
