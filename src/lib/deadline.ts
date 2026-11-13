@@ -1,20 +1,22 @@
 /* ============================================================================
    The deadline that does not depend on the thing it is measuring.
 
-   Twice now the build screen counted past its own limit — 518 seconds, then
-   3345 — while every timer attached to the build effect was dead. That is the
-   signature of the bug: the enforcement lived INSIDE the work. An effect that
-   was cancelled, unmounted or never re-run takes its watchdog with it, and then
-   nothing is left to say the build has gone on too long.
+   The build screen counted past its own limit three times — 518, 3345, then
+   ~5000 seconds — while every timer attached to the build effect was dead.
+   The signature is always the same: the enforcement lives INSIDE the work, so
+   an effect that was cancelled, unmounted or never re-run takes its watchdog
+   with it, and nothing is left to say the build has gone on too long.
 
-   So the rule moves out here, to a module-level timer owned by nobody in
-   particular. It cannot be unmounted, it cannot be cancelled by a cleanup, and
-   it is not gated on any state. Any screen that starts work registers a
-   deadline; if the work has not reported back by then, the deadline fails
-   loudly and the app says so.
+   So the rule lives out here: a module-level timer that no component cleanup
+   can clear and no unmount can take away.
 
-   This is deliberately not clever. It is the thing that must be true when
-   everything else is wrong.
+   ── one handle, one timer ──────────────────────────────────────────────────
+   The first version kept a single module-global timer and let `armDeadline`
+   replace it. That is a trap I walked into myself: React StrictMode mounts,
+   tears down and mounts again, so the second mount armed the deadline and the
+   first mount's teardown immediately cleared it — disarming the very net that
+   existed to catch this. Each handle now owns its timer, and clearing a handle
+   touches nothing else.
    ========================================================================== */
 
 export type DeadlineStop = {
@@ -34,66 +36,42 @@ type ArmOptions = {
   onStop: (stop: DeadlineStop) => void;
 };
 
-type Handle = { stopped: boolean };
-
-let current: Handle | null = null;
-let timer: ReturnType<typeof setTimeout> | null = null;
+export type Handle = {
+  stopped: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+};
 
 /**
  * Start watching one piece of work.
  *
- * Only one deadline is ever live — a build is the only thing in this app long
- * enough to need one — so arming again replaces the previous watch rather than
- * stacking timers that can fire against stale state.
+ * The timer belongs to the handle. Nothing outside can clear it by accident,
+ * and arming a second deadline never touches the first.
  */
 export function armDeadline({ label, budgetMs, graceMs = 5_000, onStop }: ArmOptions): Handle {
-  // a new build supersedes the last one
-  if (timer !== null) {
-    clearTimeout(timer);
-    timer = null;
-  }
-  if (current) current.stopped = true;
-
-  const handle: Handle = { stopped: false };
-  current = handle;
-
+  const handle: Handle = { stopped: false, timer: null };
   const startedAt = Date.now();
-  const allowed = budgetMs + graceMs;
 
-  timer = setTimeout(() => {
+  handle.timer = setTimeout(() => {
     if (handle.stopped) return;
     handle.stopped = true;
-    current = null;
-    if (timer !== null) {
-      clearTimeout(timer);
-      timer = null;
-    }
+    handle.timer = null;
     onStop({ label, allowedMs: budgetMs, elapsedMs: Date.now() - startedAt });
-  }, allowed);
+  }, budgetMs + graceMs);
 
   return handle;
 }
 
-/** The work finished — success or failure — so stop watching. */
+/** The work finished — success or failure — so stop watching. Idempotent. */
 export function clearDeadline(handle: Handle | null): void {
   if (!handle) return;
   handle.stopped = true;
-  if (current === handle) current = null;
-  if (timer !== null) {
-    clearTimeout(timer);
-    timer = null;
+  if (handle.timer !== null) {
+    clearTimeout(handle.timer);
+    handle.timer = null;
   }
 }
 
-/** True when the deadline above has already fired for this run. */
+/** True when this deadline has already fired. */
 export function deadlineTripped(handle: Handle | null): boolean {
   return handle ? handle.stopped : false;
-}
-
-/** Test seam: forget any armed deadline without firing it. */
-export function resetDeadlineForTest(): void {
-  if (timer !== null) clearTimeout(timer);
-  timer = null;
-  if (current) current.stopped = true;
-  current = null;
 }
