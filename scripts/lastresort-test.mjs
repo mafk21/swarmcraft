@@ -45,10 +45,17 @@ await esbuild({
         }));
         b.onLoad({ filter: /.*/, namespace: 'nogemini' }, () => ({
           loader: 'ts',
-          contents: readFileSync(resolve('src/lib/gemini.ts'), 'utf8').replace(
-            'const allowed = Math.min(TIMEOUT_MS, remaining);',
-            'const allowed = 4 * 60 * 60 * 1000; // test: never times out'
-          ),
+          /* Attempts are now sized per model by the ladder, and the ladder
+             itself refuses to start one once the budget is nearly gone. This
+             removes BOTH: the per-attempt ceiling and the floor, so the only
+             thing left that can end a hung build is the build's own deadline.
+             That is precisely what this test exists to prove. */
+          contents: readFileSync(resolve('src/lib/gemini.ts'), 'utf8')
+            .replace(
+              'const { value } = await attemptOne(model, Math.min(left, TIMEOUT_MS));',
+              'const { value } = await attemptOne(model, 4 * 60 * 60 * 1000);'
+            )
+            .replace('if (left < 250) break;', 'if (left < 0) break;'),
           resolveDir: resolve('src/lib'),
         }));
       },
@@ -67,11 +74,11 @@ await esbuild({
    so check for the expression rather than a single number. */
 const built = readFileSync(out.path, 'utf8');
 assert.ok(
-  /allowed\s*=\s*4\s*\*\s*60\s*\*\s*60/.test(built),
+  /attemptOne\(model, 4 \* 60 \* 60 \* 1e3\)/.test(built),
   'the request timeout must really be removed, or this test proves nothing'
 );
 assert.ok(
-  !/Math\.min\(TIMEOUT_MS/.test(built),
+  !/Math\.min\(left, TIMEOUT_MS\)/.test(built),
   'the original timeout clamp must be gone'
 );
 

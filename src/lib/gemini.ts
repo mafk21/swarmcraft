@@ -291,6 +291,50 @@ export function setIdleTimeoutForTesting(ms: number) {
   idleMs = ms;
 }
 
+/**
+ * Thrown internally to move on to the next model. Never reaches the user.
+ *
+ *   gone   — the model name is retired for this project. Free to skip.
+ *   silent — accepted the request, wrote nothing. Worth another model.
+ *   busy   — per-MINUTE throttle. The next name will be throttled too, so wait.
+ *   daily  — the per-DAY allowance for THAT MODEL is spent. Google counts it
+ *            per project per model, so a different model has its own bucket.
+ *            Flash allows 20/day and Flash-Lite 500/day on the free tier, so
+ *            this is precisely when changing model is the right move.
+ */
+class TryNext extends Error {
+  constructor(readonly why: 'silent' | 'gone' | 'busy' | 'daily', readonly quota = '') {
+    super(why);
+  }
+}
+
+/**
+ * Read Google's quota violation out of a 429.
+ *
+ * The body names the limit exactly, e.g.
+ *   {"quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+ *    "quotaValue":"20","quotaDimensions":{"model":"gemini-3.8-flash"}}
+ * That is the difference between "wait a minute" and "today is used up,
+ * switching to the model with a bigger free allowance" — and getting it wrong
+ * is what leaves a user retrying a key that is perfectly fine.
+ */
+type Quota = { perDay: boolean; limit: string };
+
+function readQuota(detail: unknown): Quota | null {
+  const d = detail as {
+    error?: {
+      details?: {
+        violations?: { quotaId?: string; quotaMetric?: string; quotaValue?: string }[];
+      }[];
+    };
+  };
+  const violations = (d?.error?.details ?? []).flatMap((x) => x?.violations ?? []);
+  const v = violations.find((x) => /quota|rate/i.test(`${x.quotaId}${x.quotaMetric}`));
+  if (!v) return null;
+  const id = `${v.quotaId ?? ''} ${v.quotaMetric ?? ''}`;
+  return { perDay: /perday|per_day/i.test(id), limit: v.quotaValue ?? '' };
+}
+
 async function call(
   key: string,
   body: Record<string, unknown>,
@@ -298,116 +342,96 @@ async function call(
   /** absolute epoch ms; the call is aborted when the budget passes */
   deadline = Infinity
 ): Promise<unknown> {
-  /* ── why this is streamed ─────────────────────────────────────────────────
-     The previous version made one blocking POST and waited for the whole body.
-     That means the ONLY thing the app knows for up to 55 seconds is silence,
-     and the failure it produced was the least useful sentence possible: "Ran
-     out of time." No stage, no progress, no way to tell a slow start from a
-     hang, and nothing to show on screen while it happened.
+  /* ── why this is streamed, and why each attempt is self-contained ────────
+     This started as one blocking POST, which told the app nothing for up to 55
+     seconds and failed with "Ran out of time" — the least useful sentence it
+     could produce. Streaming fixed the blindness. But the model loop still had
+     a structural hole: it only reacted to a NON-OK response, so a model that
+     answered 200 and then sent nothing held the entire build hostage in the
+     read phase and the next model was never tried.
 
-     Streaming turns the same request into a heartbeat. Text arrives in
-     per-second pieces, which buys three things the build needs:
-       1. a stall is detected in seconds, not after the whole budget;
-       2. the screen can count the page up as it is written;
-       3. a response that dies halfway still leaves its partial text to salvage.
+     That is a real Gemini behaviour on the free tier — an accepted request that
+     produces no text — and it looked exactly like the user's rate limit.
 
-     `alt=sse` is a query parameter, not a body field, so the request shape is
-     otherwise identical — and if a future model ignores it we fall back to
-     reading the single JSON body. */
+     So each attempt now owns its own budget, its own abort controller and its
+     own silence watchdog, and any of them can end it. Silence is a reason to
+     try the next model, not a reason to fail. */
 
-  const ctl = new AbortController();
-  const onAbort = () => ctl.abort();
-  signal?.addEventListener('abort', onAbort, { once: true });
-
-  let timedOut = false;
-  const remaining = Math.max(0, deadline - Date.now());
-  const allowed = Math.min(TIMEOUT_MS, remaining);
   const startedAt = Date.now();
+  const remaining = Math.max(0, deadline - Date.now());
+  /* The build budget, not this call, may be the thing running out. Different
+     sentence to the user, so it is decided once here. */
+  const budgetIsTight = remaining < TIMEOUT_MS;
 
-  /* No text for this long and the connection is dead, whatever the socket
-     thinks. Generous enough for the model to think before its first token,
-     short enough that the user is not left guessing for a minute. */
-  const IDLE_MS = idleMs;
-  let lastActivity = Date.now();
-  let bytes = 0;
+  const attempts = liveModel
+    ? [liveModel, ...MODELS.filter((m) => m !== liveModel)]
+    : [...MODELS];
 
-  let trip: (e: Error) => void = () => {};
-  const guard = new Promise<never>((_, reject) => {
-    trip = reject;
-  });
+  /* Waits before retrying a throttled request. A free-tier limit is per minute,
+     so these are sized to let a minute roll over rather than to be polite. */
+  const backoff = [3_000, 8_000, 15_000];
 
-  const timeLeft = () => Math.max(0, deadline - Date.now());
-  const outOfTime = () => {
-    timedOut = true;
-    ctl.abort();
-    /* Round UP and never print zero: "within 0s" is what a sub-second budget
-       produced, and it reads as a bug in the timer rather than a fact. */
-    const spent = Math.max(1, Math.ceil((Date.now() - startedAt) / 1000));
-    return new GeminiError(
-      bytes > 0
-        ? `Google stopped sending while it was still writing — ${spent}s in. Usually a rate limit or a dropped connection. Try again.`
-        : `Google did not start answering within ${spent}s. Usually a rate limit on the free tier. Wait a minute and try again.`,
-      theBudgetWasTight ? 408 : 504
-    );
-  };
-  /* `remaining < TIMEOUT_MS` means the build budget, not this call, is the
-     thing running out — which is a different sentence to the user. */
-  const theBudgetWasTight = remaining < TIMEOUT_MS;
+  let gotAnyBytes = false;
+  let lastStatus = 0;
+  let lastDetail = '';
+  /* annotated so TS does not narrow this to `null` from the only visible
+     assignment inside the nested closure */
+  let lastQuota = null as Quota | null;
+  let attemptsMade = 0;
 
-  const timer = setTimeout(() => trip(outOfTime()), Math.max(0, allowed));
-  /* A watchdog for silence. Separate from the overall timer because a build
-     that is genuinely too slow and a build that is wedged are different
-     failures and deserve different advice. */
-  const idle = setInterval(() => {
-    if (Date.now() - lastActivity > IDLE_MS) {
-      trip(
-        new GeminiError(
-          bytes > 0
-            ? 'Google went quiet in the middle of the page. That is usually a dropped connection. Try again.'
-            : 'Google accepted the request but sent nothing back. Usually a free-tier rate limit. Wait a minute and try again.',
-          504
-        )
+  const attemptOne = async (model: string, budgetMs: number) => {
+    const ctl = new AbortController();
+    const onAbort = () => ctl.abort();
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    let timedOut = false;
+    let bytes = 0;
+    let lastActivity = Date.now();
+    const IDLE_MS = Math.min(idleMs, Math.max(1_500, budgetMs));
+
+    let trip: (e: Error) => void = () => {};
+    const guard = new Promise<never>((_, reject) => {
+      trip = reject;
+    });
+
+    const outOfTime = () => {
+      timedOut = true;
+      ctl.abort();
+      return new GeminiError(
+        bytes > 0
+          ? `Google stopped sending while it was still writing — ${Math.max(
+              1,
+              Math.ceil((Date.now() - startedAt) / 1000)
+            )}s in. Usually a dropped connection. Try again.`
+          : budgetIsTight
+            ? 'The 80-second budget ran out before Google started writing. That usually means the free tier is throttling this key. Wait a minute.'
+            : 'Google did not answer in time. Usually a free-tier rate limit. Wait a minute and try again.',
+        504
       );
-    }
-  }, 1000);
+    };
 
-  const fail = (e: unknown): never => {
-    if (e instanceof GeminiError) throw e;
-    if (timedOut) throw outOfTime();
-    if (signal?.aborted) throw new GeminiError('Cancelled.', 0);
-    if (e instanceof DOMException && e.name === 'AbortError') {
-      if (timeLeft() <= 0) throw outOfTime();
-      throw new GeminiError(
-        'The connection to Google was cut off. Check your connection and try again.',
-        0
-      );
-    }
-    throw new GeminiError('Could not reach Google. Check your connection.', 0);
-  };
+    const timer = setTimeout(() => trip(outOfTime()), Math.max(0, budgetMs));
+    /* Silence is the failure mode that actually happens, so it gets its own
+       clock. A build that is too slow and a build that is dead are different
+       problems and deserve different advice. */
+    const idle = setInterval(() => {
+      if (Date.now() - lastActivity > IDLE_MS) {
+        /* Move on AND release the socket. Without the abort, a model that
+           accepted the request and went quiet leaves a live connection behind
+           — on a free tier where connections are limited, that is how one dead
+           model poisons the models tried after it. */
+        ctl.abort();
+        trip(new TryNext('silent'));
+      }
+    }, 250);
 
-  let text = '';
-  let finishReason = '';
-  let status = 0;
-  let detail = '';
+    const cleanup = () => {
+      clearTimeout(timer);
+      clearInterval(idle);
+      signal?.removeEventListener('abort', onAbort);
+    };
 
-  try {
-    const candidates = liveModel
-      ? [liveModel, ...MODELS.filter((m) => m !== liveModel)]
-      : [...MODELS];
-
-    let res: Response | null = null;
-
-    /* Waits, in ms, before each retry of a throttled request. Roughly 4s, 10s,
-       then 20s — long enough for a free-tier minute to roll over, short enough
-       that two retries still fit inside an 80-second build. */
-    const backoff = [4_000, 10_000, 20_000];
-    let attempt = 0;
-
-    for (let i = 0; i < candidates.length; i++) {
-      const model = candidates[i];
-      /* The model decides its own thinking config. Sending the wrong shape is
-         a hard 400, and sending the 2.5 budget to a 3.x model is silently
-         ignored — both were live bugs. */
+    try {
       const payload = {
         ...body,
         generationConfig: {
@@ -416,6 +440,8 @@ async function call(
         },
       };
 
+      let res: Response;
+      attemptsMade++;
       try {
         res = await Promise.race([
           guard,
@@ -427,87 +453,82 @@ async function call(
           }),
         ]);
       } catch (e) {
-        return fail(e);
+        if (e instanceof GeminiError || e instanceof TryNext) throw e;
+        if (timedOut) throw outOfTime();
+        if (signal?.aborted) throw new GeminiError('Cancelled.', 0);
+        if (e instanceof DOMException && e.name === 'AbortError') throw new TryNext('silent');
+        throw new GeminiError('Could not reach Google. Check your connection.', 0);
       }
 
-      if (res.ok) {
-        liveModel = model;
-        break;
+      if (!res.ok) {
+        lastStatus = res.status;
+        lastDetail = `${res.status}`;
+        let body: unknown = null;
+        try {
+          body = await Promise.race([guard, res.json()]);
+          lastDetail = (body as { error?: { message?: string } })?.error?.message ?? lastDetail;
+        } catch {
+          /* non-json error body */
+        }
+        if (modelGone(res.status, lastDetail)) throw new TryNext('gone');
+
+        if (res.status === 429 || res.status === 503) {
+          const quota = readQuota(body);
+          if (quota?.perDay) {
+            lastQuota = quota;
+            /* Spend the day's allowance on THIS model, not on the key. The next
+               model has its own bucket, so move on without waiting. */
+            throw new TryNext('daily', quota.limit);
+          }
+          throw new TryNext('busy', quota?.limit ?? '');
+        }
+        throw new GeminiError(`${humanise(lastDetail)}${hintFor(res.status)}`, res.status);
       }
 
-      status = res.status;
-      detail = `${status}`;
-      try {
-        const j = await Promise.race([guard, res.json()]);
-        detail = (j as { error?: { message?: string } })?.error?.message ?? detail;
-      } catch {
-        /* non-json error body */
-      }
+      /* ── read it ─────────────────────────────────────────────────────────
+         Take the first useful chunk and commit to this model. Until then the
+         attempt is still refusable, so `take()` throws TryNext('silent') and
+         the caller simply moves on. */
+      let text = '';
+      let finishReason = '';
+      let committed = false;
 
-      /* A dead model name is our problem: move on immediately, it is free. */
-      const more = i < candidates.length - 1;
-      if (more && modelGone(status, detail)) continue;
-
-      /* Being throttled is NOT a reason to give up while there is budget left.
-         The user has 80 seconds and a 429 usually clears in a few. Failing
-         fast here is what turns "wait a minute and try again" into a build the
-         user has to babysit themselves. Back off and try the SAME model again,
-         because switching names will not lift a per-key rate limit. */
-      /* 429 is the free-tier shape. 503 is Google saying the model is busy,
-         which is also temporary. A plain 500 is a real error and retrying it
-         just burns the user's budget on the same failure. */
-      const throttle = status === 429 || status === 503;
-      const waitMs = backoff[attempt] ?? 0;
-      if (throttle && attempt < backoff.length && timeLeft() > waitMs + 8_000) {
-        attempt++;
-        await new Promise((r) => setTimeout(r, waitMs));
-        i--; // retry this model
-        continue;
-      }
-
-      throw new GeminiError(`${humanise(detail)}${hintFor(status)}`, status);
-    }
-
-    if (!res) throw new GeminiError('Google accepted no model name. Try again.', 404);
-    if (!res.ok) throw new GeminiError(`${humanise(detail)}${hintFor(status)}`, status);
-
-    /* ── read the stream, or the plain body if there is no stream ────────── */
-    const contentType = res.headers?.get?.('content-type') ?? '';
-    const looksStreamed = contentType.includes('event-stream');
-
-    const takeChunk = (json: unknown) => {
-      const p = json as {
-        candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
-        promptFeedback?: { blockReason?: string };
-        error?: { message?: string };
+      const take = (json: unknown) => {
+        const p = json as {
+          candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
+          promptFeedback?: { blockReason?: string };
+          error?: { message?: string };
+        };
+        if (p?.error?.message) throw new GeminiError(humanise(p.error.message), 500);
+        if (p?.promptFeedback?.blockReason) {
+          throw new GeminiError(`Google refused the request: ${p.promptFeedback.blockReason}.`, 200);
+        }
+        const piece = p?.candidates?.[0]?.content?.parts?.map((x) => x.text ?? '').join('') ?? '';
+        if (piece) {
+          text += piece;
+          bytes += piece.length;
+          gotAnyBytes = true;
+          committed = true;
+        }
+        if (p?.candidates?.[0]?.finishReason) {
+          finishReason = p.candidates[0].finishReason!;
+          committed = true;
+        }
+        lastActivity = Date.now();
       };
-      if (p?.error?.message) throw new GeminiError(humanise(p.error.message), 500);
-      if (p?.promptFeedback?.blockReason) {
-        throw new GeminiError(
-          `Google refused the request: ${p.promptFeedback.blockReason}.`,
-          200
-        );
-      }
-      const piece = p?.candidates?.[0]?.content?.parts?.map((x) => x.text ?? '').join('') ?? '';
-      if (piece) text += piece;
-      if (p?.candidates?.[0]?.finishReason) finishReason = p.candidates[0].finishReason!;
-      bytes += piece.length;
-      lastActivity = Date.now();
-    };
 
-    if (looksStreamed && res.body?.getReader) {
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      try {
+      const contentType = res.headers?.get?.('content-type') ?? '';
+      if (contentType.includes('event-stream') && res.body?.getReader) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
         for (;;) {
           const { done, value } = await Promise.race([guard, reader.read()]);
           if (done) break;
           lastActivity = Date.now();
           buffer += decoder.decode(value, { stream: true });
-          /* SSE frames are separated by a blank line. Keeping the tail in the
-             buffer is what stops a JSON object split across two reads from
-             being thrown away — the classic streaming bug. */
+          /* Keep the tail: a JSON object split across two reads is the classic
+             streaming bug, and it silently drops the page. */
           const frames = buffer.split(/\r?\n\r?\n/);
           buffer = frames.pop() ?? '';
           for (const frame of frames) {
@@ -516,60 +537,145 @@ async function call(
             const raw = line.slice(5).trim();
             if (!raw || raw === '[DONE]') continue;
             try {
-              takeChunk(JSON.parse(raw));
+              take(JSON.parse(raw));
             } catch (e) {
               if (e instanceof GeminiError) throw e;
-              /* a keep-alive or a malformed frame is not fatal */
+              /* a keep-alive or malformed frame is not fatal */
             }
           }
         }
-      } catch (e) {
-        if (e instanceof GeminiError) throw e;
-        return fail(e);
-      }
-    } else {
-      let json: unknown;
-      try {
-        json = await Promise.race([guard, res.json()]);
-      } catch (e) {
-        return fail(e);
-      }
-      takeChunk(json);
-    }
-
-    if (!text) {
-      throw new GeminiError(
-        finishReason === 'MAX_TOKENS'
-          ? 'The answer was cut off before it finished. Try fewer sections.'
-          : `The model returned nothing (${finishReason || 'no content'}).`,
-        200
-      );
-    }
-
-    const truncated = finishReason === 'MAX_TOKENS';
-    try {
-      return JSON.parse(text);
-    } catch {
-      const m = text.match(/\{[\s\S]*\}/);
-      if (m) {
+      } else {
+        let json: unknown;
         try {
-          return JSON.parse(m[0]);
-        } catch {
-          /* fall through */
+          json = await Promise.race([guard, res.json()]);
+        } catch (e) {
+          if (e instanceof TryNext || e instanceof GeminiError) throw e;
+          throw new TryNext(committed ? 'busy' : 'silent');
         }
+        take(json);
       }
-      throw new GeminiError(
-        truncated
-          ? 'The answer ran out of room before the page was finished. Try a shorter brief.'
-          : 'The model did not return usable JSON.',
-        200
-      );
+
+      if (!text) {
+        /* 200, read cleanly, no words. Not a finished answer, so it is worth
+           another model — but remember WHY, because "it ran out of room" and
+           "it stayed silent" are different things to tell the user. */
+        if (finishReason === 'MAX_TOKENS') lastDetail = 'MAX_TOKENS';
+        throw new TryNext(finishReason === 'MAX_TOKENS' ? 'busy' : 'silent');
+      }
+
+      liveModel = model;
+
+      const truncated = finishReason === 'MAX_TOKENS';
+      try {
+        return { value: JSON.parse(text), truncated };
+      } catch {
+        const m = text.match(/\{[\s\S]*\}/);
+        if (m) {
+          try {
+            return { value: JSON.parse(m[0]), truncated };
+          } catch {
+            /* fall through */
+          }
+        }
+        throw new GeminiError(
+          truncated
+            ? 'The answer ran out of room before the page was finished. Try a shorter brief.'
+            : 'The model did not return usable JSON.',
+          200
+        );
+      }
+    } catch (e) {
+      /* Whatever ended this attempt, the connection must not survive it. */
+      if (e instanceof TryNext || e instanceof GeminiError || timedOut) ctl.abort();
+      if (e instanceof TryNext) throw e;
+      if (e instanceof GeminiError) throw e;
+      if (timedOut) throw outOfTime();
+      throw new GeminiError('Could not reach Google. Check your connection.', 0);
+    } finally {
+      cleanup();
     }
-  } finally {
-    clearTimeout(timer);
-    clearInterval(idle);
-    signal?.removeEventListener('abort', onAbort);
+  };
+
+  /* ── the attempt ladder ───────────────────────────────────────────────────
+     Models first: a name that is retired or blind costs seconds, not the
+     build. Then throttling waits, retrying the SAME model, because a per-key
+     rate limit is not lifted by asking a different name. */
+  const ROUNDS = 3;
+  for (let round = 0; round < ROUNDS; round++) {
+    for (const model of attempts) {
+      const left = deadline - Date.now();
+      /* Below ~1s there is no point starting a request — but breaking out
+         silently is worse than trying: a ladder that placed no call at all
+         still reported "every model stayed silent", which is a lie about work
+         that never happened. `attemptsMade` keeps that honest. */
+      if (left < 250) break;
+
+      try {
+        const { value } = await attemptOne(model, Math.min(left, TIMEOUT_MS));
+        return value;
+      } catch (e) {
+        if (!(e instanceof TryNext)) throw e;
+        if (e.why === 'gone') continue; // free: ask the next name
+        /* The day's allowance is spent on that MODEL, and Google counts it per
+           project per model — so the next name has its own bucket. This is the
+           whole reason Flash-Lite (500/day) is in the ladder under Flash
+           (20/day): it turns "come back tomorrow" into a finished page. */
+        if (e.why === 'daily') continue;
+        /* A silent model is worth replacing — the next name may answer.
+           A per-MINUTE throttle is not: it applies to the whole key, so trying
+           three more names instantly is hammering something Google has already
+           said no to. Break out and wait instead. */
+        if (e.why === 'busy') break;
+        if (round < ROUNDS - 1) continue;
+      }
+    }
+
+    /* If budget remains, wait out the throttle and go round again. A free-tier
+       minute is the thing we are waiting for, so the waits get longer. */
+    if (round === ROUNDS - 1) break;
+    const wait = backoff[Math.min(round, backoff.length - 1)];
+    if (deadline - Date.now() < wait + 5_000) break;
+    await new Promise((r) => setTimeout(r, wait));
   }
+
+  /* Everything answered but produced nothing usable. Say what we know. */
+  if (lastQuota?.perDay) {
+    throw new GeminiError(
+      `The free tier's daily allowance is used up on every model tried${
+        lastQuota.limit ? ` (Flash allows ${lastQuota.limit} requests a day)` : ''
+      }. It resets at midnight Pacific time. Your key is fine — nothing is wrong with it, and nothing was charged.`,
+      lastStatus
+    );
+  }
+  if (lastStatus === 429 || lastStatus === 503) {
+    throw new GeminiError(
+      'The free tier is throttling this key right now. Wait about a minute and build again — the key itself is fine.',
+      lastStatus
+    );
+  }
+  if (lastDetail === 'MAX_TOKENS') {
+    throw new GeminiError(
+      'The model used its whole answer on thinking and never wrote the page. That is a bug in the app, not in your key or your brief. Nothing was charged.',
+      200
+    );
+  }
+  if (lastDetail) {
+    throw new GeminiError(`${humanise(lastDetail)}${hintFor(lastStatus)}`, lastStatus);
+  }
+  if (attemptsMade === 0) {
+    /* The budget was already gone before a request could be placed. Saying
+       "every model stayed silent" here would be a fiction. */
+    throw new GeminiError(
+      'The 80-second budget ran out before Google could be asked. Try again.',
+      408
+    );
+  }
+  throw new GeminiError(
+    gotAnyBytes
+      ? 'Google started writing and then stopped. Try again.'
+      : 'Google took the request but never started writing — every model tried stayed silent. That is a free-tier throttle on this key, not a problem with the key itself. Wait a minute and build again.',
+    504
+  );
 }
 
 /**
