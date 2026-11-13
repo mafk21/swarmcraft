@@ -183,15 +183,43 @@ assert.ok(took < 3000, `deadline must win, took ${took}ms`);
 assert.equal(typeof g.BUDGET_MS, 'number');
 assert.ok(g.BUDGET_MS <= 90_000, `build budget must fit inside 90s, got ${g.BUDGET_MS}`);
 
-/* ── 7. testKey never throws, whatever Google says ──────────────────────── */
+/* ── 7. testKey proves the key can BUILD, not merely that it exists ─────── */
 
-reset(); respond = () => ({ status: 200, body: { models: [] } });
-assert.equal((await g.testKey('good')).ok, true);
+/* The old version called models.list and reported success. A retired model
+   still shows up there, so setup said "Key works" and the first build died
+   with a 404. These four cases pin the honest behaviour. */
 
+reset(); respond = ok('ready');
+const good = await g.testKey('good');
+assert.equal(good.ok, true);
+assert.match(good.message, /Key works/);
+assert.equal(calls.length, 1, 'setup must make a real generateContent call');
+assert.match(calls[0].url, /:generateContent/, 'models.list is not proof of anything');
+assert.ok(calls[0].body.generationConfig.maxOutputTokens <= 16,
+  'the setup call must be tiny — it is a probe, not a build');
+
+/* a key Google rejects is a real failure */
 reset(); respond = () => ({ status: 400, body: { error: { message: 'API key not valid.' } } });
 const bad = await g.testKey('bad');
 assert.equal(bad.ok, false);
 assert.match(bad.message, /API key not valid/);
+
+/* a retired model is OUR fault: setup must walk on to one that works, and
+   still finish by saying the key is fine */
+reset();
+respond = (url) =>
+  url.includes('gemini-flash-latest')
+    ? { status: 404, body: { error: { message: 'This model models/gemini-flash-latest is no longer available to new users.' } } }
+    : ok('ready')();
+const retired = await g.testKey('k');
+assert.equal(retired.ok, true, 'a retired model name must not fail the key');
+assert.equal(calls.length, 2, 'must try the next model name after a 404');
+
+/* rate limiting is not a bad key — do not send the user to regenerate it */
+reset(); respond = () => ({ status: 429, body: { error: { message: 'Resource exhausted.' } } });
+const limited = await g.testKey('k');
+assert.equal(limited.ok, true, '429 means the key is valid but throttled');
+assert.match(limited.message, /rate-limiting|wait/i);
 
 reset(); respond = () => ({ throw: new TypeError('offline') });
 const down = await g.testKey('k');

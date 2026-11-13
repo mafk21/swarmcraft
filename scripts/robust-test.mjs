@@ -122,4 +122,33 @@ await assert.rejects(() => g.buildSite('k', 'store', {}), (e) => {
   return true;
 }, 'a truncated answer must fail readably');
 
-console.log('ROBUST OK — fences, chatter, invented keys, 20 sections, broken sections, unknown types, bad themes all still yield a page; truncated and unusable output fails readably');
+/* ── 11. the model name Google retires does not fail the build ───────────── */
+
+reset_hint: {
+  /* 2.5-flash was hardcoded and answered 404 to every new project; the whole
+     app was dead on arrival. A 404 on a model name must be an instant,
+     invisible retry on the next name — never a user-visible failure. */
+  /* Only one name works for this pretend project — the situation a new key is
+     actually in. Anything else 404s the way Google words it. */
+  const WORKS = 'gemini-3.8-flash';
+  const seen = [];
+  globalThis.fetch = async (url) => {
+    seen.push(String(url));
+    if (!String(url).includes(WORKS)) {
+      const name = String(url).match(/models\/([^:]+):/)?.[1] ?? 'unknown';
+      return {
+        ok: false, status: 404,
+        json: async () => ({ error: { message: `This model models/${name} is no longer available to new users.` } }),
+      };
+    }
+    return {
+      ok: true, status: 200,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(GOOD) }] } }] }),
+    };
+  };
+  const r = await g.buildSite('k', 'store', {});
+  assert.equal(r.spec.meta.title, 'Falcon Coffee', 'a retired model name must still produce a page');
+  assert.ok(seen.length >= 2, 'must try more than one model name');
+}
+
+console.log('ROBUST OK — fences, chatter, invented keys, 20 sections, broken sections, unknown types, bad themes, retired models all still yield a page; truncated and unusable output fails readably');

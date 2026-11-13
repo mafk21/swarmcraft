@@ -26,7 +26,14 @@ export default function App() {
     }
     getApiKey()
       .then((k) => {
-        if (k) patch({ hasKey: true });
+        if (!k) return;
+        patch({ hasKey: true });
+        /* Setup is a FIRST-RUN job, so a returning user never sees it. Without
+           this the app painted the key screen for a frame, then the key screen
+           navigated itself away — a flash of "give me your key" aimed at
+           someone who had already given it. Decide here instead, before the
+           first paint of any real content. */
+        if (useApp.getState().step === 'key') go('projects');
       })
       .catch(() => patch({ storageBlocked: true }));
   }, [patch]);
