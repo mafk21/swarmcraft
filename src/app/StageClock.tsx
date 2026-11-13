@@ -38,14 +38,20 @@ const STAGE_LIMIT: Record<string, number> = {
   'Measuring the page': 8,
 };
 
+/** How far past the whole-build budget the clock waits before it pulls the plug. */
+const OVERRUN_GRACE_S = 5;
+
 export function StageClock({
   label,
   running,
   onCancel,
+  onOverrun,
 }: {
   label: string;
   running: boolean;
   onCancel?: () => void;
+  /** fired ONCE when this stage runs past the entire build budget */
+  onOverrun?: (o: { label: string; elapsedMs: number; allowedMs: number }) => void;
 }) {
   const [secs, setSecs] = useState(0);
   const [startedAt, setStartedAt] = useState(() => Date.now());
@@ -56,34 +62,65 @@ export function StageClock({
     setSecs(0);
   }, [label]);
 
+  /* This interval is the one timer in the build screen we have PROVED is alive
+     when everything else is dead: the user's copy counted to 3345 seconds on it
+     while every timer attached to the build effect had been cancelled. So the
+     hard stop lives here too.
+
+     When a stage overruns the whole build budget (not just its own estimate),
+     the clock fires once and tells the screen to stop. That happens from this
+     interval rather than from the build's own effect, because the effect is the
+     thing that keeps going wrong. */
   useEffect(() => {
     if (!running) return;
+    let fired = false;
     const id = window.setInterval(() => {
-      setSecs((Date.now() - startedAt) / 1000);
+      const elapsed = (Date.now() - startedAt) / 1000;
+      setSecs(elapsed);
+
+      if (!fired && elapsed > BUDGET_S + OVERRUN_GRACE_S) {
+        fired = true;
+        onOverrun?.({
+          label,
+          elapsedMs: elapsed * 1000,
+          allowedMs: BUDGET_S * 1000,
+        });
+      }
     }, 100);
     return () => window.clearInterval(id);
-  }, [running, startedAt]);
+    // onOverrun is a stable callback from the parent; re-running on it would
+    // restart the clock
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running, startedAt, label]);
 
   const typical = TYPICAL[label] ?? 6;
   // the inner ring times this stage; the bar underneath times the whole build
   const stageLimit = STAGE_LIMIT[label] ?? 25;
 
+  /* A stage limit is a hint, but running past the WHOLE build budget is not a
+     hint — it means the build is already over and everything after this is
+     dead time. The clock said "past the 25s limit" politely for five minutes
+     while the user waited, which is the app lying about its own state. Past
+     the budget the bar is pinned full and the wording changes to the truth. */
+  const overBudget = secs > BUDGET_S;
   const overdue = secs > stageLimit;
   const late = !overdue && secs > typical * 1.6;
-  const pct = Math.min(100, (secs / stageLimit) * 100);
+  const pct = overBudget ? 100 : Math.min(100, (secs / stageLimit) * 100);
 
-  const state = overdue ? 'overdue' : late ? 'late' : 'normal';
+  const state = overBudget ? 'overdue' : overdue ? 'overdue' : late ? 'late' : 'normal';
 
   return (
     <div className="clock" data-state={state}>
       <div className="clock-row">
         <span className="clock-elapsed">{secs.toFixed(1)}s</span>
         <span className="clock-meta">
-          {overdue
-            ? `past the ${stageLimit}s limit for this step`
-            : secs < typical
-              ? `usually about ${typical}s`
-              : `usually ${typical}s — this one is slower`}
+          {overBudget
+            ? `past the ${BUDGET_S}s limit for the whole build`
+            : overdue
+              ? `past the ${stageLimit}s limit for this step`
+              : secs < typical
+                ? `usually about ${typical}s`
+                : `usually ${typical}s — this one is slower`}
         </span>
       </div>
 

@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build --silent && node scripts/boot-test.mjs && node scripts/flow-test.mjs && node scripts/render-test.mjs && node scripts/watchdog-test.mjs && node scripts/pdf-test.mjs && node scripts/gemini-test.mjs && node scripts/editor-test.mjs && node scripts/export-test.mjs && node scripts/nostorage-test.mjs && node scripts/snapshot-test.mjs && node scripts/snapshothtml-test.mjs && node scripts/measure-test.mjs && node scripts/swarm-test.mjs && node scripts/data-test.mjs && node scripts/budget-test.mjs && node scripts/timeline-test.mjs"
+    "test": "npm run build --silent && node scripts/boot-test.mjs && node scripts/flow-test.mjs && node scripts/render-test.mjs && node scripts/watchdog-test.mjs && node scripts/e2e-test.mjs && node scripts/pdf-test.mjs && node scripts/gemini-test.mjs && node scripts/editor-test.mjs && node scripts/export-test.mjs && node scripts/nostorage-test.mjs && node scripts/snapshot-test.mjs && node scripts/snapshothtml-test.mjs && node scripts/measure-test.mjs && node scripts/swarm-test.mjs && node scripts/data-test.mjs && node scripts/budget-test.mjs && node scripts/timeline-test.mjs"
   },
   "dependencies": {
     "idb": "^8.0.0",
@@ -25,6 +25,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^6.3.0",
     "esbuild": "^0.28.2",
+    "fake-indexeddb": "^6.2.8",
     "jsdom": "^31.0.0",
     "typescript": "^5.6.3",
     "vite": "^8.3.8"

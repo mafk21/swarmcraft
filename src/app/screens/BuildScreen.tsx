@@ -6,6 +6,7 @@ import { renderDocument } from '../../lib/render';
 import { snapshotHtml } from '../../lib/blueprint';
 import { Swarm } from '../../lib/swarm';
 import { StageClock } from '../StageClock';
+import { armDeadline, clearDeadline } from '../../lib/deadline';
 import { THEMES } from '../../lib/themes';
 import { planAnimation } from '../../lib/timing';
 
@@ -101,6 +102,28 @@ export default function BuildScreen() {
     let cancelled = false;
     const ctl = new AbortController();
     abortRef.current = ctl;
+
+    /* Third net, and the only one that does not live inside React.
+       It is a module-level timer that no cleanup can clear and no unmount can
+       take away. If it fires, the build is over whether or not the effect is
+       still breathing. */
+    const failHard = (label: string, elapsedMs: number) => {
+      ctl.abort();
+      setPhase('failed');
+      setNote('Stopped');
+      setErr(
+        `The build was still on "${label}" after ${Math.round(
+          elapsedMs / 1000
+        )}s, against a ${Math.round(BUDGET_MS / 1000)}s limit, so it was stopped. ` +
+          'Nothing was saved. If this happens with a working key, tell me — it means something is hanging outside the request itself.'
+      );
+    };
+
+    const stopWatching = armDeadline({
+      label: 'the build',
+      budgetMs: BUDGET_MS,
+      onStop: ({ label, elapsedMs }) => failHard(label, elapsedMs),
+    });
 
     /* The last line of defence, and it lives out here so the cleanup above can
        reach it. `done` is set by every exit of the pipeline — success, failure,
@@ -259,6 +282,7 @@ export default function BuildScreen() {
       } catch (e) {
         done = true;
         window.clearTimeout(watchdog);
+        clearDeadline(stopWatching);
         if (cancelled) return;
         setPhase('failed');
         setErr(
@@ -277,6 +301,7 @@ export default function BuildScreen() {
       cancelled = true;
       done = true;
       window.clearTimeout(watchdog);
+      clearDeadline(stopWatching);
       ctl.abort();
       /* Release the guard on teardown.
          `ranFor` exists so a re-render cannot start a second build for the same
@@ -491,6 +516,25 @@ export default function BuildScreen() {
                 abortRef.current?.abort();
                 setPhase('failed');
                 setErr('Stopped. Nothing was built.');
+              }}
+              /* The clock's own interval calling time. It is here because the
+                 build effect's timers have twice been cancelled while this
+                 interval kept running, counting honestly to 3345 seconds
+                 against an 80-second budget. When the thing that is measuring
+                 is demonstrably alive and the thing being measured is not, the
+                 measuring thing should intervene. */
+              onOverrun={({ label, elapsedMs }) => {
+                abortRef.current?.abort();
+                setPhase('failed');
+                setNote('Stopped');
+                setErr(
+                  `The build was still on "${label}" after ${Math.round(
+                    elapsedMs / 1000
+                  )}s, against a ${Math.round(
+                    BUDGET_MS / 1000
+                  )}s limit, so it was stopped. Nothing was saved. ` +
+                    'If this happens with a working key, tell me — it means something is hanging outside the request itself.'
+                );
               }}
             />
           </div>
