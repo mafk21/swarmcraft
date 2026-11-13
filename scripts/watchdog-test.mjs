@@ -99,7 +99,7 @@ const screen = (a.el.textContent ?? '').replace(/\s+/g, ' ');
    watchdog — as long as the screen ends up telling the user why. */
 assert.match(
   screen,
-  /ran out of time|passed its \d+-second limit without finishing|did not start answering|stopped sending|went quiet/,
+  /ran out of time|passed its \d+-second limit without finishing|did not start answering|stopped sending|went quiet|never started writing|started writing and then stopped|budget ran out/,
   `a hung build must stop itself and say so. screen was: ${screen.slice(0, 200)}`
 );
 assert.match(screen, /Nothing was built/, 'it must say nothing was built');

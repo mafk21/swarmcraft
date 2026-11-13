@@ -141,7 +141,7 @@ await expectFail(() => g.buildSite('bad', 'store', {}), /API key not valid/, '40
 
 reset();
 respond = () => ({ status: 429, body: { error: { message: 'quota' } } });
-await expectFail(() => g.buildSite('k', 'store', {}), /rate limit/, '429 must tell the user to wait');
+await expectFail(() => g.buildSite('k', 'store', {}), /throttl|rate limit/i, '429 must tell the user to wait');
 
 reset();
 respond = () => ({ status: 500, body: { error: { message: 'boom' } } });
@@ -157,7 +157,7 @@ await expectFail(() => g.buildSite('k', 'store', {}), /refused.*SAFETY/, 'a bloc
 
 reset();
 respond = () => ({ status: 200, body: { candidates: [{ finishReason: 'MAX_TOKENS' }] } });
-await expectFail(() => g.buildSite('k', 'store', {}), /cut off|nothing/i, 'truncation is explained');
+await expectFail(() => g.buildSite('k', 'store', {}), /cut off|nothing|whole answer on thinking|room/i, 'truncation is explained');
 
 reset();
 respond = () => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: 'I cannot do that.' }] } }] } });
@@ -258,12 +258,15 @@ reset();
   const t0 = Date.now();
   await expectFail(
     () => g.buildSite('k', 'store', {}, { deadline: Date.now() + 20_000 }),
-    /went quiet|stopped sending|did not start/i,
+    /went quiet|stopped sending|did not start|started writing and then stopped|never started writing/i,
     'a stalled stream must be detected, not waited out'
   );
   const took = Date.now() - t0;
   assert.ok(took > 250, `the watchdog must actually wait for silence, took ${took}ms`);
-  assert.ok(took < 5000, `a stall must be caught in seconds, not at the deadline — took ${took}ms`);
+  /* Each silent model costs one idle timeout, and the ladder tries a few —
+     which is the point: silence is recoverable, not fatal. What matters is
+     that it is nowhere near the 20s deadline it was given. */
+  assert.ok(took < 15_000, `a stall must be caught well inside the deadline — took ${took}ms`);
   g.setIdleTimeoutForTesting(25_000);
 }
 
@@ -294,7 +297,7 @@ reset();
 respond = () => ({ status: 429, body: { error: { message: 'Resource has been exhausted.' } } });
 await expectFail(
   () => g.buildSite('k', 'store', {}, { deadline: Date.now() + 5_000 }),
-  /rate limit/i,
+  /throttl|rate limit/i,
   'a rate limit with no time left must say what it is'
 );
 
@@ -307,6 +310,101 @@ const maxOut = calls[0].body.generationConfig.maxOutputTokens;
 assert.ok(
   maxOut >= 8000,
   `thought tokens are billed against maxOutputTokens and cannot be disabled on Gemini 3, so a nine-section page needs real headroom — got ${maxOut}`
+);
+
+/* ── 3h. THE USER'S BUG: 200 OK, then silence ────────────────────────────
+   "Google accepted the request but sent nothing back." A model answers 200 and
+   never writes a word. The old code committed to that model the moment the
+   response was ok, so the next one was never tried and the whole build died in
+   the read phase. Silence must be recoverable.                              */
+
+reset();
+{
+  let n = 0;
+  respond = () => {
+    n++;
+    /* the first model accepts and says nothing; the second actually writes */
+    return n === 1 ? { status: 200, body: { candidates: [] } } : ok(GOOD_SPEC)();
+  };
+  const out = await g.buildSite('k', 'store', {}, { deadline: Date.now() + 60_000 });
+  assert.equal(out.spec.meta.title, 'Falcon Coffee',
+    'a model that accepts and stays silent must not end the build');
+  assert.ok(n >= 2, `a silent model must be replaced by the next one, saw ${n} call(s)`);
+}
+
+/* an empty candidate list (the shape Google returns when it produced nothing)
+   is treated the same as silence, not as a finished empty page */
+reset();
+{
+  respond = () => ({ status: 200, body: { candidates: [{ content: {}, finishReason: undefined }] } });
+  const t0 = Date.now();
+  await expectFail(
+    () => g.buildSite('k', 'store', {}, { deadline: Date.now() + 60_000 }),
+    /never started writing|throttl/i,
+    'total silence across every model must be reported as a throttle, not as a JSON error'
+  );
+  assert.ok(Date.now() - t0 < 60_000, 'and it must give up inside the budget');
+}
+
+/* ── 3i. the free tier's DAILY allowance, and moving to a bigger bucket ───
+   Google counts the free tier per project PER MODEL: Flash allows 20 requests
+   a day, Flash-Lite 500. A 429 whose quotaId says "PerDay" therefore does not
+   mean "wait a minute" — it means "this model is done until midnight, the next
+   model still has its own 500". Getting that wrong is what leaves a user with a
+   perfectly good key retrying all evening.                                  */
+
+const dailyQuota = (model) => ({
+  status: 429,
+  body: {
+    error: {
+      message: 'You exceeded your current quota.',
+      details: [{
+        '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+        violations: [{
+          quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier',
+          quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests',
+          quotaValue: '20',
+          quotaDimensions: { model, location: 'global' },
+        }],
+      }],
+    },
+  },
+});
+
+reset();
+{
+  /* every Flash model is out of daily allowance; Flash-Lite still has 500 */
+  respond = (url) => {
+    const model = url.match(/models\/([^:]+):/)?.[1] ?? '';
+    return model.includes('flash-lite') ? ok(GOOD_SPEC)() : dailyQuota(model);
+  };
+  const t0 = Date.now();
+  const out = await g.buildSite('k', 'store', {}, { deadline: Date.now() + 60_000 });
+  const took = Date.now() - t0;
+  assert.equal(out.spec.meta.title, 'Falcon Coffee',
+    'an exhausted daily Flash quota must fall through to a model with allowance left');
+  const tried = calls.map((c) => c.url.match(/models\/([^:]+):/)?.[1]);
+  assert.ok(tried.some((m) => m.includes('flash-lite')),
+    `must reach Flash-Lite, tried: ${tried.join(', ')}`);
+  /* The real assertion: a spent DAY must not be waited out. Sleeping on a
+     per-minute window that will not refill until midnight fights the build's
+     own 80-second budget — this must be fast, not merely eventual. */
+  assert.ok(took < 3_000,
+    `a spent daily quota must move on immediately, not wait — took ${took}ms`);
+}
+
+/* when every bucket is spent, say so — and say the key is fine */
+reset();
+respond = (url) => dailyQuota(url.match(/models\/([^:]+):/)?.[1] ?? 'x');
+await assert.rejects(
+  () => g.buildSite('k', 'store', {}, { deadline: Date.now() + 60_000 }),
+  (e) => {
+    assert.match(e.message, /daily allowance|resets at midnight/i,
+      `a spent day must be named as a spent day, got "${e.message}"`);
+    assert.match(e.message, /key is fine|nothing.*wrong with it/i,
+      'and it must not send the user off to regenerate a good key');
+    return true;
+  }
 );
 
 /* ── 4. JSON wrapped in chatter is still recovered ───────────────────────── */
@@ -324,7 +422,7 @@ respond = () => ({ hang: true });
 const started = Date.now();
 await expectFail(
   () => g.buildSite('k', 'store', {}, { deadline: Date.now() + 700 }),
-  /ran out of time|did not finish|did not start answering/i,
+  /ran out of time|did not finish|did not start answering|never started writing|started writing and then stopped|budget ran out/i,
   'a hung request must hit the deadline'
 );
 const took = Date.now() - started;

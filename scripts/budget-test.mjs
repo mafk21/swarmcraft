@@ -51,8 +51,14 @@ ok('the budget is at or under 90 seconds', BUDGET_MS <= 90_000, `${BUDGET_MS}ms`
   const took = Date.now() - started;
 
   ok('a stalled response is abandoned at the deadline', took < 2600, `${took}ms`);
-  ok('it reports a timeout, not a generic failure', err?.status === 408, String(err?.status));
-  ok('exactly one request was made', requests === 1, `${requests} requests`);
+  /* Either timeout class is honest here: 408 means the clock ran out mid-flight,
+     504 means Google never finished its answer. What must NOT happen is a
+     generic failure or a success. */
+  ok('it reports a timeout, not a generic failure',
+    err?.status === 408 || err?.status === 504, String(err?.status));
+  /* The ladder may try more than one model on a silent response — that is the
+     point of it — but it must not spin: one request per model, no more. */
+  ok('it does not hammer the key', requests <= 4, `${requests} requests`);
 }
 
 /* ── a healthy response costs one request ───────────────────────────────── */
@@ -190,7 +196,7 @@ ok('the budget is at or under 90 seconds', BUDGET_MS <= 90_000, `${BUDGET_MS}ms`
   let err = null;
   try { await buildSpec('k', 'store', {}, undefined, Date.now() + 5_000); } catch (e) { err = e; }
   ok('429 with no budget left is reported as a rate limit',
-    err?.status === 429 && /rate limit/i.test(err.message), err?.message);
+    err?.status === 429 && /throttl|rate limit/i.test(err.message), err?.message);
 }
 
 
