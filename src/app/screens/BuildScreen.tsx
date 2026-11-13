@@ -417,7 +417,9 @@ export default function BuildScreen() {
             fatal?.includes('did not finish') ||
             fatal?.includes('was still on')
               ? 'Google was still writing when the 80-second limit ran out. The free tier is a handful of requests per minute, so waiting a minute usually clears it. Try again — nothing was charged for a page that never arrived.'
-              : 'A build is one request and has 80 seconds to land. If the key is fine, waiting a minute and trying again is usually enough.'}
+              : fatal?.includes('no model') || fatal?.includes('no longer available')
+                ? 'Your key is fine — Google has retired the model name this app asked for. That is a bug here, not a problem with your key, and retrying will not fix it. Check for an update.'
+                : 'A build is one request and has 80 seconds to land. If the key is fine, waiting a minute and trying again is usually enough.'}
           </p>
           <div className="row" style={{ gap: 8 }}>
             <button className="btn btn-primary" onClick={() => go('theme')}>

@@ -135,7 +135,15 @@ assert.ok(keyInput, 'the key screen must show an input');
 type(keyInput, 'AIzaSyFAKEKEYFORTESTINGONLY123456789'); // >20 chars or the screen refuses it
 await new Promise((r) => setTimeout(r, 60));
 /* the key screen's button is "Save and continue"; it calls testKey first */
-w.fetch = (u) => Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [] }) });
+/* setup makes a real generateContent probe now, not a models.list call */
+w.fetch = (u, init) =>
+  Promise.resolve({
+    ok: true, status: 200,
+    json: async () =>
+      String(init?.body ?? '').includes('Reply with the single word')
+        ? { candidates: [{ content: { parts: [{ text: 'ready' }] } }] }
+        : { models: [] },
+  });
 globalThis.fetch = w.fetch;
 await click(byText('button', /save and continue|test|save/i), 900);
 w.fetch = realFetch;

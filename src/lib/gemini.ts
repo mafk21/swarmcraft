@@ -15,7 +15,31 @@ import type { SiteSpec } from './spec';
 import { KIND_BRIEFS } from './questions';
 import { validateSpec, findSlop } from './spec';
 
-const MODEL = 'gemini-2.5-flash';
+/**
+ * Models to try, best first.
+ *
+ * `gemini-2.5-flash` answers 404 "no longer available to new users" for any
+ * project created recently, and Google points at `gemini-3.8-flash` instead.
+ * But pinning one literal name has already broken this app once, and it will
+ * break again at the next retirement — so the first choice is the moving alias
+ * Google maintains, and the rest are stable fallbacks for the day the alias
+ * lags behind, is overloaded (503), or is closed to a given project.
+ *
+ * A 404 on the model is NOT the user's fault and must never reach them as a
+ * failure: it means "try the next name", which is instant and free.
+ */
+const MODELS = ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.6-flash'] as const;
+
+/** Google's "that model is unknown or closed to you" answers. Try the next name. */
+function modelGone(status: number, detail: string): boolean {
+  if (status === 404) return true;
+  return /no longer available|NOT_FOUND|is not found for API version|not supported for generateContent/i.test(
+    detail
+  );
+}
+
+/** The model currently in use, updated once one works. */
+let liveModel: string | null = null;
 
 /**
  * 2.5 Flash THINKS by default, and thinking tokens are not billable output but
@@ -293,28 +317,52 @@ async function call(
   };
 
   try {
-    let res: Response;
-    try {
-      res = await Promise.race([guard, fetch(ENDPOINT(MODEL, key), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: ctl.signal,
-      })]);
-    } catch (e) {
-      return fail(e);
-    }
+    let res: Response | null = null;
 
-    if (!res.ok) {
-      let detail = `${res.status}`;
+    /* Walk the candidate list while Google says the model is unknown or closed
+       to this project. A 404 here is not the user's problem: their key is fine,
+       they just have a newer project than our default assumed. Trying the next
+       name costs one round trip and usually nothing, so it happens before any
+       failure is reported. Once a name works we remember it. */
+    const candidates = liveModel ? [liveModel, ...MODELS.filter((m) => m !== liveModel)] : [...MODELS];
+    let detail = '';
+    let last = 0;
+    for (let i = 0; i < candidates.length; i++) {
+      const model = candidates[i];
+      try {
+        res = await Promise.race([guard, fetch(ENDPOINT(model, key), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: ctl.signal,
+        })]);
+      } catch (e) {
+        return fail(e);
+      }
+
+      if (res.ok) {
+        liveModel = model;
+        break;
+      }
+
+      last = res.status;
+      detail = `${res.status}`;
       try {
         const j = await Promise.race([guard, res.json()]);
         detail = (j as { error?: { message?: string } })?.error?.message ?? detail;
       } catch {
         /* non-json error body */
       }
-      throw new GeminiError(`${humanise(detail)}${hintFor(res.status)}`, res.status);
+
+      const more = i < candidates.length - 1;
+      if (more && modelGone(last, detail)) continue;
+      throw new GeminiError(`${humanise(detail)}${hintFor(last)}`, last);
     }
+
+    /* Every candidate answered 404/503-with-a-model-name: nothing left to try,
+       and the loop above already threw. This guard is for the type checker. */
+    if (!res) throw new GeminiError('Google accepted no model name. Try again.', 404);
+    if (!res.ok) throw new GeminiError(`${humanise(detail)}${hintFor(last)}`, last);
 
     /* Reading the body is where it used to hang. */
     let json: unknown;
@@ -376,18 +424,81 @@ async function call(
 }
 
 
-/** Validate the key cheaply. */
-export async function testKey(key: string): Promise<{ ok: boolean; message: string }> {
+/**
+ * Validate the key by actually generating.
+ *
+ * This used to call `models.list` and call it a day — which quietly lied. A
+ * retired model still appears in that list as supporting `generateContent`;
+ * only a real call reveals that the project cannot use it. So setup reported
+ * "Key works" and the user's first build died with a 404 from a model name
+ * that had been dead the whole time.
+ *
+ * The only honest test of "can this key build a page" is to ask for a page.
+ * One token, the same model chain a real build uses, a short leash.
+ */
+export async function testKey(
+  key: string,
+  signal?: AbortSignal
+): Promise<{ ok: boolean; message: string }> {
+  const ctl = new AbortController();
+  const onAbort = () => ctl.abort();
+  signal?.addEventListener('abort', onAbort, { once: true });
+  /* No timeout here used to mean the Connect screen could spin forever. */
+  const timer = setTimeout(() => ctl.abort(), 20_000);
+
+  let detail = '';
+  let status = 0;
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`
-    );
-    if (res.ok) return { ok: true, message: 'Key works.' };
-    const j = await res.json().catch(() => null);
-    return { ok: false, message: j?.error?.message ?? `Rejected (${res.status}).` };
-  } catch {
-    return { ok: false, message: 'Could not reach Google. Check your connection.' };
+    const candidates = [...MODELS];
+    for (let i = 0; i < candidates.length; i++) {
+      const model = candidates[i];
+      let res: Response;
+      try {
+        res = await fetch(ENDPOINT(model, key), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: 'Reply with the single word: ready' }] }],
+            generationConfig: { maxOutputTokens: 8, temperature: 0, ...NO_THINKING },
+          }),
+          signal: ctl.signal,
+        });
+      } catch {
+        return { ok: false, message: 'Could not reach Google. Check your connection.' };
+      }
+
+      if (res.ok) {
+        liveModel = model;
+        return { ok: true, message: 'Key works — it wrote a real reply.' };
+      }
+
+      status = res.status;
+      detail = `${status}`;
+      try {
+        const j = await res.json();
+        detail = (j as { error?: { message?: string } })?.error?.message ?? detail;
+      } catch {
+        /* non-json error body */
+      }
+
+      /* A dead model name is our problem, not the user's: try the next one. */
+      if (i < candidates.length - 1 && modelGone(status, detail)) continue;
+      break;
+    }
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
   }
+
+  /* The key is real, we just cannot spend it this second. Telling the user
+     their key is broken here would send them to regenerate a good key. */
+  if (status === 429) {
+    return { ok: true, message: 'Key works. Google is rate-limiting it right now, so wait a minute.' };
+  }
+  if (status === 401 || status === 403) {
+    return { ok: false, message: 'Google did not accept this key. Check it was copied in full.' };
+  }
+  return { ok: false, message: `${humanise(detail)}${hintFor(status)}` };
 }
 
 /**

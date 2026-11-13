@@ -98,11 +98,20 @@ for (const n of ['indexedDB', 'IDBKeyRange', 'IDBRequest', 'IDBOpenDBRequest', '
   globalThis[n] = IDB[n];
 }
 
-/* the model hangs forever; the key check answers normally */
-w.fetch = (u) =>
-  String(u).includes('models?')
-    ? Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [] }) })
-    : new Promise(() => {});
+/* The model hangs forever; the key PROBE answers normally.
+   Setup now makes a real generateContent call rather than listing models —
+   listing proves nothing, since a retired model is still listed. The two
+   calls are told apart by their prompt: the probe asks for one word. */
+w.fetch = (u, init) => {
+  const body = String(init?.body ?? '');
+  if (body.includes('Reply with the single word')) {
+    return Promise.resolve({
+      ok: true, status: 200,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: 'ready' }] } }] }),
+    });
+  }
+  return new Promise(() => {});
+};
 globalThis.fetch = w.fetch;
 
 w.eval(js);

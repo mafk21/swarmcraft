@@ -15,15 +15,17 @@ export default function KeyScreen() {
   useEffect(() => {
     getApiKey()
       .then((k) => {
-        if (k) {
-          patch({ hasKey: true });
-          setSavedMask(`${k.slice(0, 6)}…${k.slice(-4)}`);
-        }
+        if (!k) return;
+        patch({ hasKey: true });
+        setSavedMask(`${k.slice(0, 6)}…${k.slice(-4)}`);
+        /* Boot normally sends a returning user straight past this screen (see
+           App.tsx). This is the path where they arrived here deliberately, so
+           the saved key is shown rather than silently navigated away from. */
       })
       .catch(() => {
         /* storage refused: the note below explains it, nothing to restore */
       });
-  }, [patch]);
+  }, [patch, next]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -109,7 +111,7 @@ export default function KeyScreen() {
           </div>
 
           {msg && (
-            <div className="err">
+            <div className={msg.ok ? 'err ok' : 'err'}>
               <div>
                 <strong>{msg.ok ? 'Done' : 'That key did not work'}</strong>
                 {msg.text}

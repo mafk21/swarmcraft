@@ -416,6 +416,17 @@
   font-weight: 600;
 }
 
+/* A success that reuses the error box is still an error box. The key screen
+   reports "Key works" through the same slot, and it was shouting in the alarm
+   colour while telling the user everything was fine. */
+.err.ok {
+  border-left-color: var(--l4);
+}
+
+.err.ok strong {
+  color: var(--t1);
+}
+
 /* ── build screen ──────────────────────────────────────────────────────── */
 
 .build-wrap {
