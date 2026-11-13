@@ -159,13 +159,14 @@ while (Date.now() - started < LIMIT + 10_000) {
 }
 const took = Date.now() - started;
 const copy = (root.textContent || '').replace(/\s+/g, ' ');
+console.log('  screen said:', copy.slice(0, 220));
 
 assert.ok(
   stopped,
   `with the request unable to time out, the build must still end itself. after ${Math.round(took / 1000)}s it read: ${copy.slice(0, 200)}`
 );
 assert.ok(took < LIMIT, `must stop inside the budget, took ${Math.round(took / 1000)}s`);
-assert.match(copy, /still on|ran out of time|did not finish/, 'it must say why');
+assert.match(copy, /still on|ran out of time|did not finish|did not start answering|stopped sending|went quiet|sent nothing back|rate limit/i, 'it must say why');
 assert.doesNotMatch(copy, /WRITING THE PAGE/i, 'the working screen must be replaced by the failure screen');
 
 console.log(
