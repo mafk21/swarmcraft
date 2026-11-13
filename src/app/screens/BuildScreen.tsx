@@ -17,6 +17,21 @@ function stageWidth() {
 type Phase = 'writing' | 'choosing-theme' | 'measuring' | 'building' | 'done' | 'failed';
 
 /**
+ * The last line of defence.
+ *
+ * Every stage below is supposed to end by its own deadline, and each one has a
+ * timer to make sure it does. But the user's copy hung for 518 seconds with the
+ * clock politely counting past an 80-second budget: whatever the cause, a build
+ * that can display 8.5 minutes has no business calling itself bounded.
+ *
+ * This does not trust any promise, any abort signal or any timer above it. It
+ * simply says: this run has BUDGET_MS plus a small grace to produce something,
+ * and if it has not, the build fails and says so. It is deliberately blunt — it
+ * is the one thing that must hold when everything else is wrong.
+ */
+const HARD_STOP_GRACE_MS = 5_000;
+
+/**
  * Give a step a hard stop against the shared deadline.
  *
  * Measuring is local and normally takes under a second, but it renders a whole
@@ -86,6 +101,26 @@ export default function BuildScreen() {
     let cancelled = false;
     const ctl = new AbortController();
     abortRef.current = ctl;
+
+    /* The last line of defence, and it lives out here so the cleanup above can
+       reach it. `done` is set by every exit of the pipeline — success, failure,
+       cancel — and the watchdog only fires on a run that genuinely went quiet.
+       Deliberately independent of every promise and timer below: it is the one
+       thing that must hold when they are all wrong. */
+    let done = false;
+    const watchdog = window.setTimeout(() => {
+      if (done) return;
+      done = true;
+      ctl.abort();
+      setPhase('failed');
+      setNote('Stopped');
+      setErr(
+        `The build passed its ${Math.round(
+          BUDGET_MS / 1000
+        )}-second limit without finishing, so it was stopped. Nothing was saved. ` +
+          'This is usually the free tier rate limit; waiting a minute and trying again normally clears it.'
+      );
+    }, BUDGET_MS + HARD_STOP_GRACE_MS);
 
     (async () => {
       try {
@@ -198,6 +233,12 @@ export default function BuildScreen() {
         const plan = planAnimation(swarm.duration, startedAt, deadline);
         const buildSpeed = plan.speed;
         setSpeed(buildSpeed);
+
+        /* Control passes to the animation here, which enforces its own
+           `hardCapMs`. The watchdog's job was to get us to this point; leaving
+           it armed would fire in the middle of a legitimate slow draw. */
+        done = true;
+        window.clearTimeout(watchdog);
         requestAnimationFrame(() => {
           swarm.play({
             speed: buildSpeed,
@@ -216,6 +257,8 @@ export default function BuildScreen() {
 
         return () => window.removeEventListener('resize', onResize);
       } catch (e) {
+        done = true;
+        window.clearTimeout(watchdog);
         if (cancelled) return;
         setPhase('failed');
         setErr(
@@ -232,7 +275,20 @@ export default function BuildScreen() {
 
     return () => {
       cancelled = true;
+      done = true;
+      window.clearTimeout(watchdog);
       ctl.abort();
+      /* Release the guard on teardown.
+         `ranFor` exists so a re-render cannot start a second build for the same
+         run. But React 18 StrictMode mounts, tears down and mounts again in
+         development — which is how the app is run here, via `npm run dev`. The
+         teardown cancelled the first attempt, and leaving ranFor set meant the
+         second mount returned immediately: no request, no failure, no watchdog.
+         The screen sat on "Writing the page" with the clock counting, which is
+         exactly the 518 seconds the user saw. Releasing it lets the remount run
+         the pipeline again; the first attempt is inert because `cancelled` is
+         true. */
+      if (ranFor.current === runId) ranFor.current = null;
       swarmRef.current?.stop();
       swarmRef.current = null;
     };
