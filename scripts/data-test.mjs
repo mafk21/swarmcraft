@@ -51,8 +51,16 @@ const {
   ok('a smuggled style is rejected, not stripped',
     SectionSchema.safeParse(smuggled.sections[0]).success === false);
 
+  /* The schema still refuses smuggled styling — that guard has not moved. What
+     changed is the blast radius: the key is stripped and reported, and the page
+     survives. One stray `className` must never cost the user their build. */
   const extraRoot = { ...DEMO_SPEC, css: 'body{}' };
-  ok('an extra root key is rejected', validateSpec(extraRoot).ok === false);
+  const stripped = validateSpec(extraRoot);
+  ok('an extra root key does not destroy the page', stripped.ok === true);
+  ok('the extra root key is gone from the result',
+    !('css' in JSON.parse(JSON.stringify(stripped.spec))));
+  ok('the stripping is reported as a repair',
+    stripped.ok && stripped.repairs.some((r) => /invented field/.test(r)));
 }
 
 /* ── all ten kinds ──────────────────────────────────────────────────────── */

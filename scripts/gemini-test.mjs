@@ -60,9 +60,25 @@ assert.deepEqual(built.reports.map((r) => r.muse), ['Calliope', 'Melpomene', 'Po
 const sent = calls[0].body;
 assert.equal(sent.generationConfig.responseMimeType, 'application/json');
 assert.equal(sent.generationConfig.thinkingConfig.thinkingBudget, 0, 'thinking must be off or the budget is blown');
-assert.ok(sent.generationConfig.responseSchema, 'must send a schema');
-const flat = JSON.stringify(sent.generationConfig.responseSchema);
-assert.ok(!/"(css|style|class|className|color|font)"\s*:/.test(flat), 'schema must not offer styling fields');
+/* Deliberately NO responseSchema: one unsupported keyword (`const`) made every
+   build fail with a 400 that could not fall back. The contract lives in the
+   system prompt and the output is validated locally. */
+assert.equal(
+  sent.generationConfig.responseSchema,
+  undefined,
+  'no responseSchema may be sent — it is a narrow OpenAPI subset and it failed hard'
+);
+assert.equal(
+  sent.generationConfig.responseJsonSchema,
+  undefined,
+  'the JSON-schema variant is preview-only; do not depend on it'
+);
+const sys = sent.systemInstruction.parts[0].text;
+for (const t of ['hero', 'features', 'pricing', 'products', 'testimonials', 'faq', 'about', 'menu', 'gallery', 'stats', 'cta', 'contact', 'schedule']) {
+  assert.match(sys, new RegExp(`"type": "${t}"`), `the prompt must name the "${t}" section shape`);
+}
+assert.match(sys, /Return ONE JSON object/, 'the prompt must state the output contract');
+assert.match(sys, /editorial.*studio.*retail.*nordic.*brutalist.*warm.*terminal.*minimal/s, 'the prompt must list the themes');
 assert.match(calls[0].url, /key=KEY/, 'key goes in the query');
 assert.ok(!/KEY/.test(String(sent.contents)), 'the key must never be echoed into the prompt');
 
@@ -119,11 +135,11 @@ await expectFail(() => g.buildSite('k', 'store', {}), /cut off|nothing/i, 'trunc
 
 reset();
 respond = () => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: 'I cannot do that.' }] } }] } });
-await expectFail(() => g.buildSite('k', 'store', {}), /did not return JSON/, 'prose instead of JSON is caught');
+await expectFail(() => g.buildSite('k', 'store', {}), /did not return usable JSON|did not return JSON/, 'prose instead of JSON is caught');
 
 reset();
 respond = () => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: JSON.stringify({ meta: {} }) }] } }] } });
-await expectFail(() => g.buildSite('k', 'store', {}), /did not pass validation/, 'a spec that fails the schema says so');
+await expectFail(() => g.buildSite('k', 'store', {}), /did not fit our shape/, 'a spec that fails the schema says so');
 
 /* ── 3b. a schema-vocabulary rejection is explained, not dumped ──────────── */
 reset();

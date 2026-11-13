@@ -11,7 +11,7 @@
 
 import { SITE_KINDS } from './spec';
 import type { Section } from './spec';
-import { THEME_IDS, ACCENTS, type SiteSpec } from './spec';
+import type { SiteSpec } from './spec';
 import { KIND_BRIEFS } from './questions';
 import { validateSpec, findSlop } from './spec';
 
@@ -50,7 +50,46 @@ Hard rules, no exceptions:
 11. For images, never invent a src. Omit image fields entirely unless the user tells you they have files.
 12. Accessibility: every button label says what it does, never "click here" or "learn more".
 
-Be brief. A page that says three true things well beats one that says nine vaguely.`;
+Be brief. A page that says three true things well beats one that says nine vaguely.
+
+── OUTPUT SHAPE ─────────────────────────────────────────────────────────────
+Return ONE JSON object and nothing else. No markdown fences, no commentary.
+Exact keys, exact spelling:
+
+{
+  "meta": { "title": string, "description": string, "theme": one of
+            "editorial"|"studio"|"retail"|"nordic"|"brutalist"|"warm"|"terminal"|"minimal",
+            "accent": one of "slate"|"oxblood"|"forest"|"ink"|"sand"|"clay",
+            "themeReason": string },
+  "nav": { "brand": string, "links": [{ "label": string, "href": string }] },
+  "sections": [ section, ... 3 to 9 of them ],
+  "footer": { "note": string },
+  "voice": { "register": string, "facts": [string] }
+}
+
+A section is one of these, and "type" must be exactly one of these strings:
+
+  { "type": "hero",      "eyebrow"?: string, "headline": string, "sub": string,
+    "cta"?: { "label": string, "href": string } }
+  { "type": "features",  "heading": string, "items": [{ "title": string, "body": string }, 3-6 items] }
+  { "type": "pricing",   "heading": string,
+    "tiers": [{ "name": string, "price": string, "period"?: string,
+                "features": [2-8 strings], "cta": string, "featured"?: boolean }, 2-4 tiers] }
+  { "type": "products",  "heading": string, "items": [{ "name": string, "price": string, "note"?: string }, 3-12] }
+  { "type": "testimonials", "heading": string, "items": [{ "quote": string, "author": string, "role"?: string }, 2-6] }
+  { "type": "faq",       "heading": string, "items": [{ "q": string, "a": string }, 3-8] }
+  { "type": "about",     "heading": string, "body": [1-4 strings] }
+  { "type": "menu",      "heading": string,
+    "groups": [{ "name": string, "items": [{ "name": string, "price": string, "note"?: string }, 2-14] }, 1-6] }
+  { "type": "gallery",   "heading"?: string, "items": [{ "title": string, "caption"?: string }, 3-9] }
+  { "type": "stats",     "items": [{ "value": string, "label": string }, 3-4] }
+  { "type": "cta",       "heading": string, "sub"?: string, "action": { "label": string, "href": string } }
+  { "type": "contact",   "heading": string, "email"?: string, "phone"?: string, "address"?: string, "form": boolean }
+  { "type": "schedule",  "heading": string,
+    "days": [{ "day": string, "items": [{ "time": string, "title": string }, 1-10] }, 1-7] }
+
+Omit an optional key entirely rather than sending null. Use no other keys.
+`;
 
 /** What each kind's page should actually be made of, in order. */
 export const KIND_SHAPES: Record<string, string> = {
@@ -126,67 +165,6 @@ function briefPrompt(kind: keyof typeof KIND_BRIEFS, answers: AnswerMap): string
 }
 
 /* ── schema the model must satisfy ───────────────────────────────────────── */
-
-/* The section discriminator.
-   This used `{ const: 'hero' }`, which is valid JSON Schema and which Gemini's
-   responseSchema rejects outright: "Unknown name const". The OpenAPI subset it
-   accepts has no `const`, so a single-value `enum` is the supported spelling —
-   same meaning, accepted, and the model cannot emit anything else. */
-const oneOf = (v: string) => ({ type: 'string' as const, enum: [v] });
-
-const sectionUnion = {
-  anyOf: [
-    obj({ type: oneOf('hero'), eyebrow: str(), headline: str(), sub: str(), cta: optObj({ label: str(), href: str() }) }, ['type', 'headline', 'sub']),
-    obj({ type: oneOf('features'), heading: str(), items: arr(obj({ title: str(), body: str() }, ['title', 'body']), 3, 6) }, ['type', 'heading', 'items']),
-    obj({ type: oneOf('pricing'), heading: str(), tiers: arr(obj({ name: str(), price: str(), period: optStr(), features: arr(str(), 2, 8), cta: str(), featured: { type: 'boolean' } }, ['name', 'price', 'features', 'cta']), 2, 4) }, ['type', 'heading', 'tiers']),
-    obj({ type: oneOf('products'), heading: str(), items: arr(obj({ name: str(), price: str(), note: optStr() }, ['name', 'price']), 3, 12) }, ['type', 'heading', 'items']),
-    obj({ type: oneOf('testimonials'), heading: str(), items: arr(obj({ quote: str(), author: str(), role: optStr() }, ['quote', 'author']), 2, 6) }, ['type', 'heading', 'items']),
-    obj({ type: oneOf('faq'), heading: str(), items: arr(obj({ q: str(), a: str() }, ['q', 'a']), 3, 8) }, ['type', 'heading', 'items']),
-    obj({ type: oneOf('about'), heading: str(), body: arr(str(), 1, 4) }, ['type', 'heading', 'body']),
-    obj({ type: oneOf('menu'), heading: str(), groups: arr(obj({ name: str(), items: arr(obj({ name: str(), price: str(), note: optStr() }, ['name', 'price']), 2, 14) }, ['name', 'items']), 1, 6) }, ['type', 'heading', 'groups']),
-    obj({ type: oneOf('gallery'), heading: optStr(), items: arr(obj({ title: str(), caption: optStr() }, ['title']), 3, 9) }, ['type', 'items']),
-    obj({ type: oneOf('stats'), items: arr(obj({ value: str(), label: str() }, ['value', 'label']), 3, 4) }, ['type', 'items']),
-    obj({ type: oneOf('cta'), heading: str(), sub: optStr(), action: obj({ label: str(), href: str() }, ['label', 'href']) }, ['type', 'heading', 'action']),
-    obj({ type: oneOf('contact'), heading: str(), email: optStr(), phone: optStr(), address: optStr(), form: { type: 'boolean' } }, ['type', 'heading', 'form']),
-    obj({ type: oneOf('schedule'), heading: str(), days: arr(obj({ day: str(), items: arr(obj({ time: str(), title: str() }, ['time', 'title']), 1, 10) }, ['day', 'items']), 1, 7) }, ['type', 'heading', 'days']),
-  ],
-};
-
-function str() {
-  return { type: 'string' as const };
-}
-function optStr() {
-  return { type: 'string' as const, nullable: true };
-}
-function arr(items: unknown, minItems: number, maxItems: number) {
-  return { type: 'array' as const, items, minItems, maxItems };
-}
-function obj(properties: Record<string, unknown>, required: string[]) {
-  return { type: 'object' as const, properties, required };
-}
-function optObj(properties: Record<string, unknown>) {
-  return { type: 'object' as const, properties, required: Object.keys(properties) };
-}
-
-const RESPONSE_SCHEMA = obj(
-  {
-    meta: obj(
-      {
-        title: str(),
-        description: str(),
-        theme: { type: 'string', enum: [...THEME_IDS] },
-        accent: { type: 'string', enum: [...ACCENTS] },
-        themeReason: str(),
-      },
-      ['title', 'description', 'theme', 'accent']
-    ),
-    nav: obj({ brand: str(), links: arr(obj({ label: str(), href: str() }, ['label', 'href']), 0, 6) }, ['brand', 'links']),
-    sections: { type: 'array', items: sectionUnion, minItems: 3, maxItems: 9 },
-    footer: obj({ note: str() }, ['note']),
-    voice: obj({ register: str(), facts: arr(str(), 0, 20) }, ['register', 'facts']),
-  },
-  ['meta', 'nav', 'sections', 'footer', 'voice']
-);
 
 /* ── the call ────────────────────────────────────────────────────────────── */
 
@@ -372,12 +350,24 @@ async function call(
       );
     }
 
+    const truncated = payload?.candidates?.[0]?.finishReason === 'MAX_TOKENS';
     try {
       return JSON.parse(text);
     } catch {
       const m = text.match(/\{[\s\S]*\}/);
-      if (!m) throw new GeminiError('The model did not return JSON.', 200);
-      return JSON.parse(m[0]);
+      if (m) {
+        try {
+          return JSON.parse(m[0]);
+        } catch {
+          /* fall through to the readable refusal below */
+        }
+      }
+      throw new GeminiError(
+        truncated
+          ? 'The answer ran out of room before the page was finished. Try a shorter brief.'
+          : 'The model did not return usable JSON.',
+        200
+      );
     }
   } finally {
     clearTimeout(timer);
@@ -420,6 +410,24 @@ export async function testKey(key: string): Promise<{ ok: boolean; message: stri
  * If the result cannot be salvaged we fail fast and say why rather than quietly
  * paying for another attempt.
  */
+/**
+ * Ask for the page, and validate it here.
+ *
+ * The request carries NO responseSchema. That is deliberate and it is the fix
+ * for the class of bug that cost four rounds of the user's time:
+ *
+ *   · responseSchema is a narrow OpenAPI subset, not JSON Schema. One
+ *     unsupported keyword (`const`) rejected every build before the model was
+ *     even asked anything, and it failed as a hard 400.
+ *   · a schema can only enforce shape, never honesty, and shape is already
+ *     enforced here by zod — which runs on real data and can repair a page that
+ *     is merely imperfect.
+ *   · the worst failure mode is the one that cannot fall back. Removing the
+ *     fragile constraint is strictly safer than keeping a redundant one.
+ *
+ * The output contract lives in SYSTEM instead, in plain words, and the result
+ * is validated locally. Anything the validator can salvage is salvaged.
+ */
 export async function buildSpec(
   key: string,
   kind: (typeof SITE_KINDS)[number],
@@ -436,8 +444,7 @@ export async function buildSpec(
         temperature: 0.72,
         topP: 0.9,
         responseMimeType: 'application/json',
-        responseSchema: RESPONSE_SCHEMA,
-        maxOutputTokens: 3000,
+        maxOutputTokens: 6000,
         ...NO_THINKING,
       },
     },
@@ -449,7 +456,8 @@ export async function buildSpec(
 
   if (!result.ok) {
     throw new GeminiError(
-      `The generated content did not pass validation: ${result.issues.slice(0, 3).join('; ')}`,
+      `The model's page did not fit our shape: ${result.issues.slice(0, 2).join('; ')}. ` +
+        'This is a bug in the app, not in your key or your brief. Nothing was charged.',
       200
     );
   }
