@@ -491,18 +491,27 @@ export function polyhymnia(spec: SiteSpec): Revised {
   const hasHero = spec.sections.some((s) => s.type === 'hero');
   if (!hasHero) notes.push('no hero, so no h1 on the page');
 
-  const parsed = validateSpec({ ...spec, sections });
-  return {
-    spec: parsed.ok ? parsed.spec : spec,
-    reports: [
-      {
-        muse: 'Polyhymnia',
-        role: 'accessibility',
-        changed,
-        notes: notes.length ? [...new Set(notes)].slice(0, 5) : ['images have alt text, buttons have names'],
-      },
-    ],
+  const named = {
+    muse: 'Polyhymnia',
+    role: 'accessibility',
+    notes: notes.length ? [...new Set(notes)].slice(0, 5) : ['images have alt text, buttons have names'],
   };
+
+  const parsed = validateSpec({ ...spec, sections });
+
+  /* The repaired page has to still be a valid page. It normally is — the only
+     things touched here are alt text and button labels — but if it is not, we
+     must not claim the repair: reporting "changed" while returning the original
+     sections would tell the user a button was fixed that still says the old
+     thing, and the undo button would then do nothing. */
+  if (!parsed.ok && changed) {
+    return {
+      spec,
+      reports: [{ ...named, changed: false, notes: [...named.notes, 'could not fix these without breaking the page'].slice(0, 5) }],
+    };
+  }
+
+  return { spec: parsed.ok ? parsed.spec : spec, reports: [{ ...named, changed }] };
 }
 
 /** Calliope: did they get the sections they ticked, in a sensible order? */
