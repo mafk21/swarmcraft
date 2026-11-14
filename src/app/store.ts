@@ -66,6 +66,9 @@ type S = {
   /** set when a build is abandoned by a deadline; the build screen renders it
       from the store so a dead component cannot swallow the message */
   buildError: string | null;
+  /** the run the error belongs to. A deadline that fires late must not be able
+      to rewrite a build that has already finished — see noteBuildStart. */
+  buildErrorRun: number;
   pdf: { name: string; pages: number; chars: number; text: string } | null;
   /** increments each time a build is requested; keys the build effect */
   runId: number;
@@ -97,6 +100,7 @@ const initial = {
   storageBlocked: false,
   busy: false,
   buildError: null,
+  buildErrorRun: -1,
   pdf: null,
   runId: 0,
 };
@@ -114,9 +118,22 @@ export function briefReady(answers: AnswerMap): boolean {
   return name.length > 0 && brief.length > minBriefWords;
 }
 
-/** Record a build failure where the screen cannot lose it. */
-export function failBuild(message: string): void {
-  useApp.setState({ buildError: message });
+/**
+ * Record a build failure where the screen cannot lose it.
+ *
+ * `runId` is what makes this safe. The build deadline is a module-level timer
+ * that no component can take away, which is exactly what we wanted — but on a
+ * build that succeeded it was never cleared, so ninety seconds later it fired
+ * against a dead run and put "the build was stopped" on top of a page that had
+ * been finished for a minute and a half. That is the bug the user reported as
+ * "it always errors on the first try, and the second try works".
+ *
+ * A failure now only lands if it belongs to the run that is on screen.
+ */
+export function failBuild(message: string, runId?: number): void {
+  const st = useApp.getState();
+  if (runId !== undefined && runId !== st.runId) return;
+  useApp.setState({ buildError: message, buildErrorRun: runId ?? st.runId });
 }
 
 export function clearBuildError(): void {

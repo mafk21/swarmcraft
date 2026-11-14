@@ -109,7 +109,7 @@ export default function BuildScreen() {
     if (ranFor.current === runId) return;
     ranFor.current = runId;
     /* a new run is not the old run's failure */
-    failBuild('');
+    failBuild('', runId);
 
     let cancelled = false;
     const ctl = new AbortController();
@@ -138,11 +138,14 @@ export default function BuildScreen() {
         /* Through the store as well as through local state: if this component
            has been torn down and rebuilt, its own setState goes nowhere, but a
            store write still reaches the screen that is on the page. */
+        /* Scoped to this run: a deadline that outlives its build must not be
+           able to fail the next one, or a finished one. */
         failBuild(
           `The build was still on "${label}" after ${Math.round(
             elapsedMs / 1000
           )}s, against a ${Math.round(BUDGET_MS / 1000)}s limit, so it was stopped. ` +
-            'Nothing was saved. If this happens with a working key, tell me — it means something is hanging outside the request itself.'
+            'Nothing was saved. If this happens with a working key, tell me — it means something is hanging outside the request itself.',
+          runId
         );
         failHard(label, elapsedMs);
       },
@@ -226,26 +229,16 @@ export default function BuildScreen() {
           };
         }
 
-        /* Save it before showing it.
-           A build used to live only in memory until the user pressed Save on
-           the result screen, so closing the tab — or never noticing the button
-           — meant the page was gone and "Your sites" was empty. The build IS
-           the artefact; keeping it is the least surprising thing to do with it.
-           Failure here is not fatal: the page still renders, and the result
-           screen says it was not saved. */
         patch({ spec: finalSpec });
-        try {
-          const id = await saveProject(finalSpec, { kind });
-          patch({ projectId: id, saved: true });
-        } catch {
-          /* storage refused: the result screen offers export instead */
-        }
 
         /* render the real document */
         /* capture: the swarm is about to take this DOM apart and redraw it with
            cursors. Scroll reveals must stand still for that, or the blueprint
            measures positions the page then animates away from. */
         const html = renderDocument(finalSpec, { capture: true });
+        /* dev/test hook: from here on the page document exists, which is what
+           decides whether there is anything worth saving */
+        (globalThis as Record<string, unknown>).__PIPE__ = { rendered: true };
         setHtml(html);
         // Let React commit the iframe before measuring. `requestAnimationFrame`
         // alone is a trap: in a background tab it never fires, so the pipeline
@@ -268,6 +261,31 @@ export default function BuildScreen() {
         const bp = await raceDeadline(snapshotHtml(html, stageWidth(), deadline), deadline);
         if (cancelled) return;
         patch({ blueprint: bp });
+
+        /* Keep it now, and not a line earlier.
+           A build used to be saved the instant the model answered — before the
+           page was rendered or measured — so a build that then failed to
+           produce a document was still written to "Your sites", and the user
+           saw the site it had just told them it could not build. It is not
+           saved after the animation either: the page is the artefact, the
+           animation is only how you watch it arrive, and a tab closed halfway
+           through the drawing should not cost you the site.
+           Failure here is not fatal: the page still renders and the result
+           screen offers export. */
+        let kept = false;
+        const keep = async () => {
+          /* StrictMode runs the pipeline twice in development. The build is
+             the same artefact both times, so it is written once. */
+          if (kept || cancelled) return;
+          kept = true;
+          try {
+            const id = await saveProject(finalSpec, { kind });
+            if (!cancelled) patch({ projectId: id, saved: true });
+          } catch {
+            /* storage refused: the result screen offers export instead */
+          }
+        };
+        void keep();
 
         /* build */
         setPhase('building');
@@ -298,9 +316,17 @@ export default function BuildScreen() {
 
         /* Control passes to the animation here, which enforces its own
            `hardCapMs`. The watchdog's job was to get us to this point; leaving
-           it armed would fire in the middle of a legitimate slow draw. */
+           it armed would fire in the middle of a legitimate slow draw.
+
+           The module-level deadline is cleared here too, and this is the line
+           that was missing: it is armed for the whole build, and on a build
+           that SUCCEEDED nobody ever disarmed it. It fired ninety seconds
+           later, straight onto the finished page, with "the build was still on
+           the build". That is why the first build of every session failed and
+           the second — whose deadline had not yet expired — worked. */
         done = true;
         window.clearTimeout(watchdog);
+        clearDeadline(stopWatching);
         requestAnimationFrame(() => {
           swarm.play({
             speed: buildSpeed,
@@ -340,13 +366,18 @@ export default function BuildScreen() {
       cancelled = true;
       done = true;
       window.clearTimeout(watchdog);
+      clearDeadline(stopWatching);
       ctl.abort();
-      /* NOTE: the module-level deadline is deliberately NOT cleared here.
-         A teardown happens on StrictMode's throwaway first mount, and clearing
-         it there disarmed the one net that exists to survive exactly this. It
-         is cleared in the pipeline's own exits — success, failure — which are
-         the only places that mean "the build is over". If the effect is torn
-         down and never restarted, the deadline still fires and says so. */
+      /* Clear THIS run's deadline on teardown.
+         The old note here said not to, because a StrictMode teardown on the
+         throwaway first mount appeared to disarm the net. That was true when
+         the deadline was one module-level handle that a second arm could not
+         distinguish from the first — the first mount's cleanup killed the
+         second mount's timer. Handles are per-arm now, so clearing our own
+         takes nothing away from anyone else's. What it actually fixes is a
+         leak: a run that returns early at a `cancelled` check (which is what a
+         StrictMode teardown causes) left its deadline armed forever, and it
+         fired minutes later onto a page that was already finished. */
       /* Release the guard on teardown.
          `ranFor` exists so a re-render cannot start a second build for the same
          run. But React 18 StrictMode mounts, tears down and mounts again in
@@ -407,6 +438,15 @@ export default function BuildScreen() {
     setPhase('done');
     setPaused(false);
     setLive(true);
+    /* Skipping is the user saying "I have seen enough — keep it". The page is
+       real, so refusing to save it would be the surprising choice. */
+    const spec = useApp.getState().spec;
+    if (spec && !useApp.getState().saved) {
+      void saveProject(spec, { kind }).then(
+        (id) => patch({ projectId: id, saved: true }),
+        () => undefined
+      );
+    }
   }
 
   function replay() {
