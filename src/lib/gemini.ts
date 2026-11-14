@@ -13,7 +13,7 @@ import { SITE_KINDS } from './spec';
 import type { Section } from './spec';
 import type { SiteSpec } from './spec';
 import { KIND_BRIEFS } from './questions';
-import { validateSpec, findSlop } from './spec';
+import { validateSpec, findSlop, isInventedTestimonial } from './spec';
 
 /**
  * Models to try, best first.
@@ -145,13 +145,17 @@ Hard rules, no exceptions:
 
 1. NEVER write CSS, HTML, class names, colours, fonts or layout. The schema has no field for it. Do not add extra keys.
 2. Write like a person who runs the thing. Concrete, specific, short sentences. One spelling convention throughout — pick British or American and keep it.
-3. Do not invent facts, numbers, testimonials, client names, prices, addresses or credentials. If the user gave you none, write around it. Never invent a testimonial.
+3. Do not invent facts, numbers, testimonials, client names, prices, addresses or credentials. If the user gave you none, write around it. NEVER invent a testimonial, and never invent a customer by name ("Local Customer", "A Happy Regular") to stand in for one — an anonymous review is still a fabricated one. If the brief contains no real quotes from real people, omit the testimonials section entirely.
 4. Banned phrases — using any of these fails validation: "unlock the power", "unleash", "elevate your", "next level", "game-changer", "cutting-edge", "state-of-the-art", "seamlessly", "revolutionize", "world-class", "best-in-class", "one-stop shop", "look no further", "we are passionate about", "in today's fast-paced", "delve into", "tapestry", "empower", "transform your business".
 5. No em-dash at the start of a sentence. No exclamation marks. No emoji.
 6. Headings are 2–5 words. No title case tics like "Why Choose Us?".
 7. Be internally consistent. One name for the company, one price per thing, one format per phone number or price. If the user gave prices in one format, use it everywhere.
 8. Match the tone the user asked for in every sentence. Do not drift warm, do not drift corporate.
 9. The "voice.facts" array is the only material you may reuse. Keep every real number the user gave you there, verbatim.
+9b. USE WHAT YOU WERE TOLD. Every concrete detail in the brief must survive into the page: opening year, prices and bag sizes, the roast day, delivery windows, the address, opening hours, the email, the phone number, and any "we do not do X" boundary. A page that drops half the brief is a worse page, however nicely it reads. Do not generalise a specific fact into a vague one ("we ship fast" instead of "ships in two to three days").
+9c. The brief may contain contact details. Put them in the contact section as given — do not move an email into a hero, and do not reformat a phone number.
+9d. If the user sells things with prices, the products section must list them at the stated price and size. Do not round, convert or approximate prices.
+9e. If the user says they do NOT do something (no café, no delivery to a country, no walk-ins), say so plainly somewhere it belongs. Stating the boundary is more useful than omitting it.
 10. Sections must appear in an order a reader would want them, starting with "hero". Put contact last if it exists.
 11. For images, never invent a src. Omit image fields entirely unless the user tells you they have files.
 12. Accessibility: every button label says what it does, never "click here" or "learn more".
@@ -1004,6 +1008,19 @@ export function calliope(spec: SiteSpec, wanted: string[]): Revised {
     copy.push(c);
     out = { ...out, sections: copy };
     notes.push('moved contact to the end');
+  }
+
+  /* Invented reviews must not survive: a fabricated testimonial is a false
+     claim about a real business, and it is the one thing the brief cannot
+     license. Dropping the section leaves a truthful page; keeping it does not. */
+  const invented = out.sections.filter((s) => isInventedTestimonial(s));
+  if (invented.length) {
+    out = { ...out, sections: out.sections.filter((s) => !isInventedTestimonial(s)) };
+    notes.push(
+      `removed ${invented.length} testimonial section${
+        invented.length === 1 ? '' : 's'
+      } with no named source — they were not in your brief`
+    );
   }
 
   if (missing.length) notes.push(`never produced: ${missing.join(', ')}`);

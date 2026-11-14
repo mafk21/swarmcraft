@@ -571,7 +571,175 @@ blockquote footer{font-size:0.8125rem;color:var(--ink-2);letter-spacing:0.02em}
 .foot{border-top:1px solid var(--rule);padding:32px 0}
 .foot .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;
   font-size:0.8125rem;color:var(--ink-2)}
+/* ── motion ──────────────────────────────────────────────────────────────── */
+/* The first version of this stylesheet had no motion at all: a static
+   document that looked correct and felt dead. These rules give the page a
+   pulse without touching the content, and every one of them is disabled under
+   \`prefers-reduced-motion\`, because a site that ignores that setting is
+   broken for some of its readers.
+   Motion here is one idea used consistently: things arrive as you reach them,
+   and respond when you touch them. */
+
+@keyframes fade-up{
+  from{opacity:0;transform:translateY(14px)}
+  to{opacity:1;transform:none}
+}
+@keyframes fade-in{from{opacity:0}to{opacity:1}}
+@keyframes rule-in{
+  from{transform:scaleX(0)}
+  to{transform:scaleX(1)}
+}
+@keyframes drift{
+  from{transform:scale(1.06) translateY(0)}
+  to{transform:scale(1.06) translateY(-10px)}
+}
+
+/* The hero arrives immediately — it is above the fold, so waiting for an
+   observer would mean the first thing anyone sees is blank. */
+.hero .eyebrow{animation:fade-up .5s cubic-bezier(.2,.7,.2,1) both}
+.hero h1{animation:fade-up .62s cubic-bezier(.2,.7,.2,1) .06s both}
+.hero .lede{animation:fade-up .62s cubic-bezier(.2,.7,.2,1) .13s both}
+.hero .cta,.hero .hero-actions{animation:fade-up .62s cubic-bezier(.2,.7,.2,1) .2s both}
+.hero .plate,.hero .hero-art{animation:fade-in .9s ease .1s both}
+
+/* Everything below the fold reveals once, on arrival. Children stagger, so a
+   grid reads as a sequence rather than a slab. */
+/* IMPORTANT: nothing is hidden by CSS alone. The hidden state only applies
+   once the script has marked the page as animation-ready. If the script fails
+   to load, is blocked, or the export is opened with JS off, every section is
+   simply visible — a blank page is a far worse failure than a still one. */
+.motion-ready .reveal{opacity:0;transform:translateY(16px)}
+.motion-ready .reveal.in{
+  opacity:1;transform:none;
+  transition:opacity .62s cubic-bezier(.2,.7,.2,1),transform .62s cubic-bezier(.2,.7,.2,1);
+}
+.reveal.in > *{transition:opacity .5s ease,transform .5s cubic-bezier(.2,.7,.2,1)}
+.motion-ready .reveal .stag{opacity:0;transform:translateY(10px)}
+.motion-ready .reveal.in .stag{opacity:1;transform:none}
+.motion-ready .reveal.in .stag:nth-child(1){transition-delay:.04s}
+.motion-ready .reveal.in .stag:nth-child(2){transition-delay:.1s}
+.motion-ready .reveal.in .stag:nth-child(3){transition-delay:.16s}
+.motion-ready .reveal.in .stag:nth-child(4){transition-delay:.22s}
+.motion-ready .reveal.in .stag:nth-child(5){transition-delay:.28s}
+.motion-ready .reveal.in .stag:nth-child(6){transition-delay:.34s}
+.motion-ready .reveal.in .stag:nth-child(7){transition-delay:.4s}
+.motion-ready .reveal.in .stag:nth-child(8){transition-delay:.46s}
+.motion-ready .reveal.in .stag:nth-child(n+9){transition-delay:.5s}
+
+/* Section headings get a rule that draws itself in. One line of movement,
+   used once per section, is enough. */
+.sec h2{position:relative;padding-bottom:.5em}
+.sec h2::after{
+  content:"";position:absolute;left:0;bottom:0;width:2.6em;height:2px;
+  background:var(--accent);transform:scaleX(0);transform-origin:left;
+}
+.motion-ready .reveal.in h2::after,.hero h2::after{animation:rule-in .7s cubic-bezier(.2,.7,.2,1) .12s forwards}
+.center h2::after,.center h2::after{left:50%;margin-left:-1.3em;transform-origin:center}
+
+/* Interaction: everything clickable responds. A button that does nothing when
+   hovered is the difference between a document and a site. */
+.cta{transition:transform .18s ease,filter .18s ease,box-shadow .18s ease}
+.cta:hover{transform:translateY(-1px);filter:brightness(1.06)}
+.cta:active{transform:translateY(0)}
+.card,.product,.tier,.group{
+  transition:transform .22s cubic-bezier(.2,.7,.2,1),border-color .22s ease,background .22s ease;
+}
+.card:hover,.product:hover,.tier:hover,.group:hover{
+  transform:translateY(-3px);border-color:var(--accent);
+}
+.tier.featured{transition:transform .22s cubic-bezier(.2,.7,.2,1)}
+.tier.featured:hover{transform:translateY(-3px)}
+a{transition:color .16s ease}
+.nav a{position:relative}
+.nav a::after{
+  content:"";position:absolute;left:0;right:0;bottom:-4px;height:1px;
+  background:currentColor;transform:scaleX(0);transform-origin:right;
+  transition:transform .24s cubic-bezier(.2,.7,.2,1);
+}
+.nav a:hover::after{transform:scaleX(1);transform-origin:left}
+
+/* Photos breathe very slightly — enough to feel alive, not enough to distract. */
+.has-img img{transition:transform .5s cubic-bezier(.2,.7,.2,1)}
+.card:hover .has-img img,.product:hover .has-img img,.hero-art:hover img{transform:scale(1.03)}
+
+/* The nav gains weight once you leave the top. */
+.nav{transition:box-shadow .25s ease,background .25s ease}
+.nav.scrolled{box-shadow:0 1px 0 var(--rule),0 6px 24px rgba(0,0,0,.06)}
+
+/* A quiet scroll cue under the hero, only where there is more page below. */
+.scroll-cue{
+  display:inline-block;margin-top:28px;font-size:.75rem;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-2);opacity:0;
+  animation:fade-in .6s ease .9s forwards;
+}
+.scroll-cue::after{
+  content:"";display:block;width:1px;height:22px;margin:8px auto 0;background:var(--ink-2);
+  animation:cue 1.8s ease-in-out infinite;transform-origin:top;
+}
+@keyframes cue{0%,100%{transform:scaleY(.4);opacity:.5}50%{transform:scaleY(1);opacity:1}}
+
+/* The build screen shows this document inside an iframe while the cursors
+   draw it. Animations must not run there: the reveal would fight the
+   blueprint. renderDocument adds .is-capture for that case. */
+.is-capture .reveal,.is-capture .reveal .stag,.is-capture.motion-ready .reveal{opacity:1!important;transform:none!important}
+.is-capture *,.is-capture *::before,.is-capture *::after{animation:none!important}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.001ms!important;animation-iteration-count:1!important;
+    transition-duration:.001ms!important;scroll-behavior:auto!important;
+  }
+  .reveal,.reveal .stag{opacity:1!important;transform:none!important}
+}
+\`
 `;
+
+/* The tiny script that makes the reveals happen. Kept inline and dependency
+   free: the exported page has to work as a file on someone's laptop. */
+const SITE_JS = `
+(function(){
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /* Nothing is hidden until this line runs. If the script is blocked or the
+     file is opened with JS disabled, the page is static but complete. */
+  if (!reduced) document.documentElement.classList.add('motion-ready');
+  var sections = document.querySelectorAll('.sec');
+  var i;
+  /* Mark the parts that should arrive on scroll. The hero is exempt: it is
+     visible at load, so hiding it would show a blank first screen. */
+  for (i = 1; i < sections.length; i++) sections[i].classList.add('reveal');
+  var stags = document.querySelectorAll('.grid-3 > *, .grid-2 > *, .grid-4 > *, .faq > *, .contact-grid > *');
+  for (i = 0; i < stags.length; i++) stags[i].classList.add('stag');
+
+  if (reduced || !('IntersectionObserver' in window)) {
+    var all = document.querySelectorAll('.reveal');
+    for (i = 0; i < all.length; i++) all[i].classList.add('in');
+    return;
+  }
+  var io = new IntersectionObserver(function(entries){
+    for (var e = 0; e < entries.length; e++) {
+      if (entries[e].isIntersecting) {
+        entries[e].target.classList.add('in');
+        io.unobserve(entries[e].target);
+      }
+    }
+  }, { rootMargin: '0px 0px -12% 0px', threshold: 0.08 });
+  var rs = document.querySelectorAll('.reveal');
+  for (i = 0; i < rs.length; i++) io.observe(rs[i]);
+
+  /* The nav gets a shadow once the page has moved. */
+  var nav = document.querySelector('.nav');
+  if (nav) {
+    var onScroll = function(){
+      if (window.scrollY > 8) nav.classList.add('scrolled');
+      else nav.classList.remove('scrolled');
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  }
+})();
+`;
+
+
 
 /* ── document ────────────────────────────────────────────────────────────── */
 
@@ -580,6 +748,8 @@ export type RenderOpts = {
   index?: number;
   /** true when writing files to disk rather than an in-app preview */
   exportMode?: boolean;
+  /** true while the build screen draws this page: motion must stand still */
+  capture?: boolean;
   /** export filenames by page index, so links point at real files */
   slugs?: string[];
 };
@@ -634,8 +804,9 @@ ${themeCss(theme, spec.meta.accent)}
 ${SITE_CSS}
 </style>
 </head>
-<body id="top">
+<body id="top"${opts.capture ? ' class="is-capture"' : ''}>
 ${renderBody(spec, opts)}
+<script>${SITE_JS}</script>
 </body>
 </html>`;
 }

@@ -233,7 +233,10 @@ export default function BuildScreen() {
         }
 
         /* render the real document */
-        const html = renderDocument(finalSpec);
+        /* capture: the swarm is about to take this DOM apart and redraw it with
+           cursors. Scroll reveals must stand still for that, or the blueprint
+           measures positions the page then animates away from. */
+        const html = renderDocument(finalSpec, { capture: true });
         setHtml(html);
         // Let React commit the iframe before measuring. `requestAnimationFrame`
         // alone is a trap: in a background tab it never fires, so the pipeline
