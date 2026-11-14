@@ -18,16 +18,18 @@ export const TAIL_MS = 1200;
  * lands there, and a slow one is compressed to fit rather than the fast one
  * being padded to match.
  */
-export const COMFORTABLE_TOTAL_MS = 22_000;
+export const COMFORTABLE_TOTAL_MS = 30_000;
 
 /**
- * Never slower than designed, never a blur.
+ * Never slower than designed, never a blur — and now genuinely the second one.
  *
- * Four, not three: a build whose page arrived in two seconds has ~36s of room
- * and a 27s animation, so anything less than 4x cannot compress it and the user
- * ends up watching a 30-second build they did not need to wait for.
+ * Three, not four. At 4x a 27s drawing is compressed into seven seconds and
+ * nothing in it can be followed; the user's own words were that it "builds a
+ * little bit too fast". Three keeps the same page inside the 80s budget with
+ * room to spare (27s / 3 = 9s of drawing plus the model's time) while leaving
+ * every gesture long enough to see.
  */
-export const MAX_SPEED = 4;
+export const MAX_SPEED = 3;
 
 export type AnimationPlan = {
   /** playback multiplier handed to Swarm */

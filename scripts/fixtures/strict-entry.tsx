@@ -9,7 +9,7 @@ import BuildScreen from '../../src/app/screens/BuildScreen';
 
 export { useApp, act };
 
-export function mountBuild() {
+export function mountBuild(runId = 7) {
   const el = document.createElement('div');
   document.body.appendChild(el);
   const root: Root = createRoot(el);
@@ -18,7 +18,7 @@ export function mountBuild() {
       hasKey: true,
       step: 'build' as never,
       kind: 'store' as never,
-      runId: 7,
+      runId,
       answers: { name: 'Falcon Coffee', prompt: 'We roast beans in Dammam and sell them across the Kingdom.' } as never,
       themeMode: 'manual' as never,
       theme: 'editorial' as never,
@@ -30,3 +30,10 @@ export function mountBuild() {
   });
   return { el, root };
 }
+
+/* The build screen's saving is a side effect in a stubbed module; the test
+   needs to see it. */
+export { saves as dbSaves } from '../../src/lib/db';
+
+/* failBuild is what the deadline writes through; the test drives it directly. */
+export { failBuild } from '../../src/app/store';

@@ -138,6 +138,13 @@ for (const latency of [2000, 8000, 20000, 35000, 50000]) {
   ok(`${latency}ms: finishes inside the budget`, visible <= BUDGET_MS / 1000, `${visible.toFixed(1)}s`);
   ok(`${latency}ms: the animation actually completed`, done !== null, 'never fired onDone');
   ok(`${latency}ms: the page is complete, not half drawn`, swarm.complete);
+
+  /* "it builds a little bit too fast": a drawing compressed into a blur is a
+     defect, not a speed win. At the 3x ceiling the gestures stay watchable. */
+  ok(`${latency}ms: the drawing is not compressed into a blur`, speed <= 3.001,
+    `${speed.toFixed(2)}x — the ceiling is 3x`);
+  ok(`${latency}ms: the drawing gets enough time to be watched`,
+    simNow >= 4000, `only ${(simNow / 1000).toFixed(1)}s of drawing`);
 }
 
 console.log(fail === 0 ? '\nTIMELINE OK' : `\n${fail} FAILED`);
