@@ -17,12 +17,14 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 
-Node 22+. `npm run build` and `npm run typecheck` both pass.
+Node 22.12+. `npm run build` and `npm run typecheck` both pass.
 
 You need one free Gemini API key (`https://aistudio.google.com/apikey`) for the real
-pipeline. To watch the swarm without a key, click
-**"Watch the swarm with a sample page instead"** on the first screen — it builds a
-hand-written Store spec and skips the model entirely.
+pipeline. There is no sample page and no demo mode: the app contains no built-in
+content, and every page it draws comes from a brief you wrote. (A button offering one
+used to be documented here; it was removed with the rest of the mock data. If you want
+to see the animation without spending a request, build once and press **Replay** in the
+HUD — that redraws the page you already have.)
 
 ## What is done
 
@@ -174,17 +176,21 @@ Measured end to end, real pipeline, stubbed network, frame clock driven by hand:
 
 | model takes | speed | drawing | page visible |
 |---|---|---|---|
-| 2s | 1.4× | 19.9s | **21.9s** |
-| 8s | 1.9× | 14.0s | **22.0s** |
-| 20s | 4.0× | 6.8s | **26.8s** |
-| 35s | 4.0× | 6.7s | **41.7s** |
-| 50s | 4.0× | 6.9s | **56.9s** |
+| 2s | 1.0× | 19.8s | **22.3s** |
+| 8s | 1.0× | 19.8s | **29.8s** |
+| 20s | 3.0× | 5.9s | **30.9s** |
+| 35s | 3.0× | 6.2s | **43.0s** |
+| 50s | 3.0× | 6.0s | **46.5s** |
 
 **Budget now:** one request, generous 55s ceiling so a slow-but-good answer is not thrown
-away, and 80s for the whole build. A normal build lands around 22 seconds. `npm test`
+away, and 80s for the whole build. A normal build lands around 30 seconds. `npm test`
 fails if the budget is raised above 90 seconds.
 
-## The four ideas that make it work## The four ideas that make it work## The four ideas that make it work## The four ideas that make it work
+The ceiling was 4× and the comfortable total 22s, which compressed a 27s drawing into
+six seconds — nothing in it could be followed. A build is worth watching for longer
+than it is worth finishing sooner.
+
+## The four ideas that make it work
 
 **1. The model cannot write CSS.**
 Every object in the schema is `.strict()` — the spec, and all twenty-six nested objects

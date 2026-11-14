@@ -1,0 +1,54 @@
+# NOTICE
+
+## What the MIT license covers
+
+Everything written for this project: the application, the schema, the renderer,
+the snapshot/blueprint measurement, the orchestrator, the tests, the docs. That
+is the MIT-licensed Software.
+
+## What it does not cover
+
+The **look of the build animation** is adapted from the work of others, and MIT
+cannot grant you rights to it. Specifically, `src/lib/swarm.ts` and the visual
+language around it — the nine-cursor flock, the crosshair box drags with a live
+`W × H` badge, the typed text with a caret, the pen-tool lines, the ruler guides,
+the master-plus-copies with red spacing marks, and the blank-page-first
+choreography — are adapted from:
+
+- **[Swarm](https://califa.github.io/swarm-site/)** by
+  **[Joel Califa](https://joelcalifa.com)** — the original. Site source:
+  <https://github.com/califa/swarm-site>. Published **without a license**.
+- **[Swarm Rebuild](https://github.com/DhvanilPatel/swarm-cursors)** by Dhvanil
+  Patel, which adapts Califa's engine to rebuild any page and is also published
+  without a license.
+
+Those two projects are the origin of the idea, and of much of the motion design.
+Read them before you reuse this part of the code.
+
+## What that means if you fork this
+
+- **Your own use — learn, run it, change it, ship it as your own tool — is fine.**
+  That is the whole point of publishing.
+- **Reusing the animation engine in something you distribute** is a grey area.
+  The honest move is to ask Joel Califa first, exactly as the Swarm Rebuild
+  README asks of its own users. Nothing here changes whatever he decides.
+- **The MIT grant below applies to the code we wrote.** Where the code is an
+  adaptation of unlicensed work, we pass on no more than we were given.
+
+We are not the authority on that boundary and this file is not legal advice.
+
+## What is genuinely this project's own
+
+- **A build for a page that does not exist yet.** Swarm and Swarm Rebuild both
+  re-enact the construction of a page that already exists. This app generates
+  the page first, measures it, and then draws it — and the result is a real,
+  interactive, exportable site.
+- **The spec contract.** The model cannot write CSS: `SiteSpecSchema` is strict
+  and has no styling fields at all.
+- **The measurement.** `src/lib/blueprint.ts` takes a real rendered document
+  apart in a hidden iframe and records where every box, line and visual line of
+  text actually sits, so the swarm redraws the page the browser laid out rather
+  than a guess at it.
+- **The build budget.** One request, a hard 80-second wall, enforced in three
+  independent places, with the animation compressed to fit rather than the limit
+  being ignored.

@@ -1,0 +1,48 @@
+name: Bug report
+description: Something went wrong while you were using the app
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you write: the build stamp at the bottom of the first screen
+        (e.g. `build abc1234`) tells us which version you are actually running.
+        If it does not match `main`, a stale checkout is the most common cause.
+  - type: input
+    id: stamp
+    attributes:
+      label: Build stamp
+      description: From the bottom of the key screen.
+      placeholder: build abc1234
+    validations:
+      required: true
+  - type: dropdown
+    id: key
+    attributes:
+      label: Were you using a real Gemini API key?
+      options:
+        - "Yes"
+        - "No — it failed before any request"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got. If the build stopped, paste its message.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and browser
+      placeholder: Windows 11, Chrome 141
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output (optional)
+      description: Open devtools (F12) → Console, and paste anything in red.
+      render: shell

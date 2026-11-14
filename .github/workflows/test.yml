@@ -1,0 +1,51 @@
+name: test
+
+# Everything this project claims — a hard 80-second build, a model that cannot
+# write CSS, a swarm that actually touches what it builds — is enforced by the
+# suite in `scripts/`. Until now that only happened on one machine. This makes
+# it happen on every push and every pull request.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Only the version this was built and verified on. Node 20 is probably
+        # fine, but "probably" is not what a green badge should mean, so the
+        # declared floor in package.json matches what CI actually runs.
+        node: ['22']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # a real branch ref, so the bundle's commit stamp matches HEAD
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: tests
+        # The suite is browserless by design: jsdom, esbuild, and a stubbed
+        # network. No API key, no Chromium, no secrets.
+        run: npm test
+
+      - name: the app builds
+        run: npm run build
