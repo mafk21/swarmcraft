@@ -549,6 +549,39 @@ export function validateSpec(raw: unknown): SpecResult {
    the discriminated union is preserved because we only mutate in place.
    ========================================================================== */
 
+/**
+ * Does this section assert something the user never told us?
+ *
+ * Testimonials are the one section whose value is entirely in the claim: a
+ * quote attributed to a person. A model asked for a coffee shop will happily
+ * invent "The weekly roast date ensures the filter beans arrive perfectly
+ * fresh" and attribute it to "A Happy Customer" — which is a fabricated review
+ * on a real business's website. The user's brief had none, and the rule is
+ * facts only from the user.
+ *
+ * An anonymous attribution ("Local Coffee Customer", "Regular Customer") is
+ * not evidence of anything, so those count as invented too. Dropping the
+ * section is the honest outcome: no reviews is a truthful page, invented
+ * reviews are not.
+ */
+export function isInventedTestimonial(s: Section): boolean {
+  if (s.type !== 'testimonials') return false;
+  const generic =
+    /^(a |an |the )?(happy |satisfied |loyal |regular |local |our )?(customer|client|user|guest|visitor|patron)/i;
+  const named = (author: string): boolean => {
+    const a = author.trim();
+    if (!a) return false;
+    if (generic.test(a)) return false;
+    /* "Regular Customer", "A Happy Client" — a role, not a person. */
+    if (/^(regular|local|happy|loyal|satisfied|repeat|longtime)[\s-]/i.test(a)) return false;
+    return true;
+  };
+  /* A section survives only if every quote has a real attribution AND the
+     quotes are not the model's own paraphrase of the brief. With nothing to
+     check against, the safe reading of "some quotes, no names" is invented. */
+  return !s.items.every((i) => named(i.author));
+}
+
 /** Path into a section: the section index, then keys. */
 export type FieldPath = (string | number)[];
 

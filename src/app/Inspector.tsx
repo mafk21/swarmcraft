@@ -748,7 +748,7 @@ function ThemeFrame({ spec }: { spec: SiteSpec }) {
   return (
     <iframe
       className="mini-iframe"
-      srcDoc={renderDocument(spec)}
+      srcDoc={renderDocument(spec, { capture: true })}
       title="Theme preview"
       sandbox=""
     />

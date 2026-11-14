@@ -520,6 +520,45 @@ assert.match(downAuth.message, /AQ\.|restricted|not being enabled|well formed/i,
 assert.notEqual(downAuth.message, down.message,
   'the two key formats must not get identical advice for the same failure');
 
+/* ── 7b. invented reviews are removed, because they are false claims ──────
+   The model was asked for a coffee roastery, and nobody had left a review. It
+   wrote two quotes and attributed them to "Local Coffee Customer" and "Regular
+   Customer" — anonymised people who do not exist, on a real business's site.
+   That is the one thing a brief can never license.                          */
+
+const withReviews = JSON.parse(JSON.stringify(GOOD_SPEC));
+withReviews.sections.push({
+  type: 'testimonials',
+  heading: 'Customer feedback',
+  items: [
+    { quote: 'The weekly roast date ensures the filter beans arrive perfectly fresh.', author: 'Local Coffee Customer' },
+    { quote: 'Prompt pickup service and consistent single-origin roasts.', author: 'Regular Customer' },
+  ],
+});
+reset(); respond = ok(withReviews);
+const noFakes = await g.buildSite('k', 'store', {});
+assert.ok(!noFakes.spec.sections.some((s) => s.type === 'testimonials'),
+  'anonymous "customers" are still invented people; the section must go');
+assert.ok(
+  noFakes.reports.some((r) => r.notes.some((n) => /no named source|testimonial/i.test(n))),
+  'and the removal must be reported, not silent'
+);
+
+/* a quote with a real name is the user's material and must survive */
+const realReview = JSON.parse(JSON.stringify(GOOD_SPEC));
+realReview.sections.push({
+  type: 'testimonials',
+  heading: 'What people say',
+  items: [
+    { quote: 'Best beans in the Eastern Province.', author: 'Noura Al-Harbi', role: 'customer since 2020' },
+    { quote: 'The Tuesday roast is why I keep coming back.', author: 'Omar Al-Dosari' },
+  ],
+});
+reset(); respond = ok(realReview);
+const kept = await g.buildSite('k', 'store', {});
+assert.ok(kept.spec.sections.some((s) => s.type === 'testimonials'),
+  'a testimonial with a named person is real content and must not be dropped');
+
 /* ── 8. the deterministic Muses do their job ────────────────────────────── */
 
 const messy = JSON.parse(JSON.stringify(GOOD_SPEC));
