@@ -39,7 +39,11 @@ export default function App() {
   }, [patch]);
 
   const wide = step === 'build';
-  const bare = step === 'result';
+  /* The result screen used to hide the header entirely. That left the finished
+     site as a dead end: no logo to go back to, no visible way to the other
+     things you have built, and nothing to suggest any exist. It gets a slim
+     header instead — one line, and one obvious way home. */
+  const bare = false;
   // the step rail only applies once you are actually building something
   const showRail = step !== 'key' && step !== 'projects' && step !== 'result';
 
