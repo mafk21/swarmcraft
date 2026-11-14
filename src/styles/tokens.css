@@ -7,41 +7,67 @@
      as agents rather than decoration.
 
    Banned: gradients, glow, glassmorphism, emoji, sparkles, purple→blue.
-   Required: 1px borders, 4px radii, a visible grid, one accent, plain verbs.
+   Required: 1px borders, small radii, a visible grid, one accent, plain verbs.
+
+   ── what changed, and why ────────────────────────────────────────────────────
+
+   The chrome was technically correct and visually anonymous: cool near-black,
+   a system sans, and borders at every edge. This app exists to make other
+   people's pages look designed, so its own surface has to demonstrate the
+   thing it claims. Three levers, no new colours:
+
+     1. TWO TYPEFACES, NOT ONE. Instrument Serif for the wordmark and for
+        display numerals; Instrument Sans for everything you read; JetBrains
+        Mono for keys, hashes and the clock. The pairing is the design.
+     2. WARM RADICAL NEUTRALS. Same value ladder, moved off the blue axis.
+        Cool grey reads "admin template"; a trace of warmth reads "printed".
+     3. A REAL DRAFTING GRID. The doctrine asks for a visible grid. It is now
+        an actual 32px graticule at 2% — you feel it before you see it.
+
+   Every colour below is neutral. The nine cursor colours are unchanged and
+   remain the only saturation in the product.
    ========================================================================== */
+
+/* ── typefaces: bundled, so the app has no network dependency ───────────── */
+
+@import '@fontsource-variable/instrument-sans/wght.css';
+@import '@fontsource/instrument-serif/latin-400.css';
+@import '@fontsource/instrument-serif/latin-400-italic.css';
+@import '@fontsource-variable/jetbrains-mono/wght.css';
 
 :root {
   color-scheme: dark;
 
-  /* ── surfaces: neutral, slightly cool, no blue cast ─────────────────── */
-  --s0: #0c0d0f;          /* page */
-  --s1: #121316;          /* panel */
-  --s2: #17181c;          /* raised */
-  --s3: #1e2025;          /* input */
-  --s4: #26282f;          /* hover */
+  /* ── surfaces: warm neutrals, one step apart, no blue cast ──────────── */
+  --s0: #0b0b0c;          /* page */
+  --s1: #111113;          /* panel */
+  --s2: #171719;          /* raised */
+  --s3: #1d1d21;          /* input */
+  --s4: #26262b;          /* hover */
 
   /* ── lines ──────────────────────────────────────────────────────────── */
-  --l1: #24262c;          /* hairline */
-  --l2: #2f3239;          /* visible border */
-  --l3: #3d414a;          /* strong */
+  --l1: #1f1f23;          /* hairline */
+  --l2: #2b2b30;          /* visible border */
+  --l3: #383840;          /* strong */
+  --l4: #4a4a53;          /* focus / active edge */
 
   /* ── text ───────────────────────────────────────────────────────────── */
-  --t0: #f2f3f5;          /* primary */
-  --t1: #b3b7c0;          /* secondary */
-  --t2: #7e838f;          /* tertiary / labels */
-  --t3: #565b66;          /* disabled */
+  --t0: #f5f3ef;          /* primary — warm white, never pure #fff */
+  --t1: #b6b3ac;          /* secondary */
+  --t2: #8a8780;          /* tertiary / labels */
+  --t3: #5d5b55;          /* disabled */
 
   /* ── the single accent (interactive only) ───────────────────────────── */
-  --acc: #e8eaed;
-  --on-acc: #0c0d0f;
+  --acc: #f0ece3;
+  --on-acc: #0b0b0c;
 
   /* ── state ──────────────────────────────────────────────────────────── */
-  --ok: #4ade9b;
-  --ok-dim: #14301f;
-  --warn: #e3b341;
-  --warn-dim: #2e2612;
-  --err: #f2555a;
-  --err-dim: #341a1c;
+  --ok: #66c79a;
+  --ok-dim: #12261b;
+  --warn: #d8ab4b;
+  --warn-dim: #2a2312;
+  --err: #e0686b;
+  --err-dim: #2e1618;
 
   /* ── the nine cursor colours: the ONLY saturated colour in the app ──── */
   --c0: #5b8cff;
@@ -55,10 +81,10 @@
   --c8: #6fd0c0;
 
   /* ── geometry ───────────────────────────────────────────────────────── */
-  --r1: 4px;
-  --r2: 6px;
-  --r3: 10px;
-  --r4: 14px;
+  --r1: 3px;
+  --r2: 5px;
+  --r3: 8px;
+  --r4: 12px;
 
   --sp1: 4px;
   --sp2: 8px;
@@ -67,12 +93,15 @@
   --sp5: 24px;
   --sp6: 32px;
   --sp7: 48px;
+  --sp8: 64px;
 
   /* ── type ───────────────────────────────────────────────────────────── */
-  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto,
+  --serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+  --sans: 'Instrument Sans Variable', 'Instrument Sans',
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
           'Helvetica Neue', Arial, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
-          'Liberation Mono', monospace;
+  --mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, 'SF Mono',
+          Menlo, Consolas, 'Liberation Mono', monospace;
 
   --fs-1: 11px;
   --fs-2: 12px;
@@ -82,10 +111,14 @@
   --fs-6: 26px;
   --fs-7: 34px;
 
+  /* ── the drafting grid ──────────────────────────────────────────────── */
+  --grid: rgba(255, 255, 255, 0.022);
+  --grid-size: 32px;
+
   /* ── elevation: hard, no blur halos ─────────────────────────────────── */
-  --el1: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --el2: 0 4px 16px rgba(0, 0, 0, 0.45);
-  --el3: 0 12px 40px rgba(0, 0, 0, 0.55);
+  --el1: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --el2: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --el3: 0 14px 44px rgba(0, 0, 0, 0.6);
 
   --dur: 140ms;
   --ease: cubic-bezier(0.2, 0, 0.1, 1);
@@ -101,7 +134,15 @@ html, body, #root { height: 100%; }
 
 body {
   margin: 0;
-  background: var(--s0);
+  background-color: var(--s0);
+  /* The doctrine's "visible grid", done as a graticule rather than a
+     decoration: hairlines at 2%, fixed to the viewport so panels slide over
+     it like sheets of paper on a drafting table. */
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+  background-attachment: fixed;
   color: var(--t0);
   font-family: var(--sans);
   font-size: var(--fs-3);
@@ -111,10 +152,25 @@ body {
 }
 
 h1, h2, h3, h4, p { margin: 0; }
-h1 { font-size: var(--fs-6); font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
-h2 { font-size: var(--fs-5); font-weight: 600; letter-spacing: -0.015em; line-height: 1.3; }
-h3 { font-size: var(--fs-4); font-weight: 600; letter-spacing: -0.01em; }
+
+h1 {
+  font-size: var(--fs-6);
+  font-weight: 600;
+  letter-spacing: -0.026em;
+  line-height: 1.16;
+}
+h2 { font-size: var(--fs-5); font-weight: 600; letter-spacing: -0.018em; line-height: 1.3; }
+h3 { font-size: var(--fs-4); font-weight: 600; letter-spacing: -0.012em; }
 h4 { font-size: var(--fs-3); font-weight: 600; }
+
+/* Display type: the one place the serif earns its keep on a screen full of
+   UI. Sentence-length, never a paragraph. */
+.display {
+  font-family: var(--serif);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  line-height: 1.02;
+}
 
 button, input, textarea, select {
   font-family: inherit;
@@ -122,10 +178,10 @@ button, input, textarea, select {
   color: inherit;
 }
 
-a { color: var(--t0); text-decoration: underline; text-underline-offset: 2px; }
-a:hover { color: var(--t1); }
+a { color: var(--t0); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; text-decoration-color: var(--l4); }
+a:hover { color: var(--t0); text-decoration-color: var(--t0); }
 
-::selection { background: #ffffff26; }
+::selection { background: #f0ece333; }
 
 :focus-visible {
   outline: 2px solid var(--acc);
@@ -133,7 +189,7 @@ a:hover { color: var(--t1); }
   border-radius: 2px;
 }
 
-::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--l2);
@@ -155,21 +211,21 @@ a:hover { color: var(--t1); }
 .center { align-items: center; justify-content: center; }
 .between { justify-content: space-between; }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mono { font-family: var(--mono); font-variant-ligatures: none; }
+.mono { font-family: var(--mono); font-variant-ligatures: none; letter-spacing: -0.01em; }
 
 /* ── text roles ─────────────────────────────────────────────────────────── */
 
 .label {
   font-size: var(--fs-1);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.085em;
   text-transform: uppercase;
   color: var(--t2);
 }
 .muted { color: var(--t1); }
 .dim { color: var(--t2); }
-.tiny { font-size: var(--fs-1); line-height: 1.45; }
-.lede { font-size: var(--fs-4); color: var(--t1); line-height: 1.6; }
+.tiny { font-size: var(--fs-1); line-height: 1.5; }
+.lede { font-size: var(--fs-4); color: var(--t1); line-height: 1.62; }
 
 /* ── buttons ────────────────────────────────────────────────────────────── */
 
@@ -177,25 +233,27 @@ a:hover { color: var(--t1); }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 7px;
   height: 34px;
-  padding: 0 14px;
+  padding: 0 15px;
   border: 1px solid var(--l2);
   border-radius: var(--r2);
   background: var(--s2);
   color: var(--t0);
   font-size: var(--fs-3);
   font-weight: 500;
+  letter-spacing: -0.005em;
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
   transition: background var(--dur) var(--ease),
               border-color var(--dur) var(--ease),
-              color var(--dur) var(--ease);
+              color var(--dur) var(--ease),
+              transform var(--dur) var(--ease);
 }
 .btn:hover:not(:disabled) { background: var(--s4); border-color: var(--l3); }
-.btn:active:not(:disabled) { background: var(--s3); }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:active:not(:disabled) { background: var(--s3); transform: translateY(0.5px); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .btn-primary {
   background: var(--acc);
@@ -216,19 +274,19 @@ a:hover { color: var(--t1); }
 }
 .btn-ghost:hover:not(:disabled) { background: var(--s3); color: var(--t0); }
 
-.btn-sm { height: 26px; padding: 0 9px; font-size: var(--fs-2); border-radius: var(--r1); }
-.btn-lg { height: 42px; padding: 0 22px; font-size: var(--fs-4); border-radius: var(--r2); }
+.btn-sm { height: 27px; padding: 0 10px; font-size: var(--fs-2); border-radius: var(--r1); }
+.btn-lg { height: 44px; padding: 0 24px; font-size: var(--fs-4); border-radius: var(--r2); letter-spacing: -0.01em; }
 .btn-icon { width: 30px; height: 30px; padding: 0; }
 
 /* ── inputs ─────────────────────────────────────────────────────────────── */
 
-.field { display: flex; flex-direction: column; gap: 6px; }
+.field { display: flex; flex-direction: column; gap: 7px; }
 
 .input,
 .textarea,
 .select {
   width: 100%;
-  padding: 9px 11px;
+  padding: 10px 12px;
   background: var(--s3);
   border: 1px solid var(--l2);
   border-radius: var(--r2);
@@ -248,11 +306,12 @@ a:hover { color: var(--t1); }
   outline: none;
   border-color: var(--t2);
   background: var(--s2);
+  box-shadow: 0 0 0 3px rgba(240, 236, 227, 0.06);
 }
 .input:disabled,
 .textarea:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.textarea { resize: vertical; min-height: 76px; line-height: 1.55; }
+.textarea { resize: vertical; min-height: 78px; line-height: 1.6; }
 .input-mono { font-family: var(--mono); font-size: var(--fs-2); letter-spacing: 0.02em; }
 
 .select {
@@ -273,7 +332,7 @@ a:hover { color: var(--t1); }
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 11px 12px;
+  padding: 12px 13px;
   border: 1px solid var(--l2);
   border-radius: var(--r2);
   background: var(--s1);
@@ -285,7 +344,7 @@ a:hover { color: var(--t1); }
 .check:hover { background: var(--s2); border-color: var(--l3); }
 .check[aria-checked='true'] {
   background: var(--s2);
-  border-color: var(--t2);
+  border-color: var(--l4);
 }
 .check-box {
   flex: 0 0 auto;
@@ -293,7 +352,7 @@ a:hover { color: var(--t1); }
   height: 15px;
   margin-top: 1px;
   border: 1px solid var(--l3);
-  border-radius: 3px;
+  border-radius: 2px;
   background: var(--s3);
   display: grid;
   place-items: center;
@@ -303,8 +362,8 @@ a:hover { color: var(--t1); }
   border-color: var(--acc);
   color: var(--on-acc);
 }
-.check-title { font-weight: 500; color: var(--t0); }
-.check-desc { font-size: var(--fs-2); color: var(--t2); margin-top: 2px; line-height: 1.45; }
+.check-title { font-weight: 500; color: var(--t0); letter-spacing: -0.006em; }
+.check-desc { font-size: var(--fs-2); color: var(--t2); margin-top: 3px; line-height: 1.5; }
 
 /* ── badges ─────────────────────────────────────────────────────────────── */
 
@@ -317,8 +376,10 @@ a:hover { color: var(--t1); }
   border: 1px solid var(--l2);
   border-radius: var(--r1);
   background: var(--s3);
-  font-size: var(--fs-1);
+  font-family: var(--mono);
+  font-size: 10px;
   font-weight: 500;
+  letter-spacing: 0.02em;
   color: var(--t1);
   white-space: nowrap;
 }
@@ -342,42 +403,14 @@ a:hover { color: var(--t1); }
   50% { opacity: 0.35; }
 }
 
-/* ── panels ─────────────────────────────────────────────────────────────── */
-
-.panel {
-  background: var(--s1);
-  border: 1px solid var(--l1);
-  border-radius: var(--r3);
-}
-.panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp3);
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--l1);
-}
-.panel-body { padding: 16px; }
-
-.rule { height: 1px; background: var(--l1); border: 0; margin: 0; }
-
-/* ── the grid: a faint structural texture, not decoration ───────────────── */
-
-.grid-bg {
-  background-image:
-    linear-gradient(var(--l1) 1px, transparent 1px),
-    linear-gradient(90deg, var(--l1) 1px, transparent 1px);
-  background-size: 32px 32px;
-  background-position: -1px -1px;
-}
-
-/* ── motion ─────────────────────────────────────────────────────────────── */
+/* ── reduced motion: the app should respect the same setting its output does ─ */
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
   }
 }

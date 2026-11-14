@@ -83,6 +83,7 @@ export default function KeyScreen() {
   return (
     <div className="screen">
       <div className="keypad">
+        <p className="eyebrow">Setup</p>
         <h1>{hasKey ? 'Your key is saved' : 'One key, then it works'}</h1>
         <p>
           Swarmsmith uses your own Google Gemini API key. It is stored in this browser&rsquo;s

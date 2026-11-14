@@ -1,6 +1,15 @@
 /* ============================================================================
    App chrome. Monochrome only. The nine cursor colours are the only
    saturation on screen — that is what makes them read as agents.
+
+   Rules this file follows, so the next change cannot undo the progress:
+
+     · ONE scale of spacing (--sp*), never an arbitrary pixel gap.
+     · Borders are a STRUCTURE, not a default. A panel is bordered because it
+       is a distinct object on the drafting table; a row inside it is not.
+     · Type gets smaller as it gets less important, never louder.
+     · Nothing is centred unless it is a single, brief moment (the key screen,
+       an empty state).
    ========================================================================== */
 
 #root {
@@ -19,32 +28,48 @@
   position: sticky;
   top: 0;
   z-index: 40;
-  background: color-mix(in srgb, var(--s0) 88%, transparent);
-  backdrop-filter: blur(10px);
+  background: color-mix(in srgb, var(--s0) 86%, transparent);
+  backdrop-filter: blur(14px) saturate(1.1);
   border-bottom: 1px solid var(--l2);
 }
 
 .hdr-in {
-  max-width: 1240px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 0 24px;
-  height: 56px;
+  padding: 0 32px;
+  height: 60px;
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 28px;
 }
 
 .mark {
   display: flex;
   align-items: center;
-  gap: 9px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  font-size: 0.9375rem;
+  gap: 10px;
+  font-family: var(--serif);
+  font-size: 1.25rem;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--t0);
 }
 
 .mark svg {
   display: block;
+  color: var(--t1);
+  transition: color var(--dur) var(--ease), transform 420ms var(--ease);
+}
+
+.mark-btn {
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.mark-btn:hover svg {
+  color: var(--t0);
+  transform: rotate(-8deg);
 }
 
 /* ── stepper ───────────────────────────────────────────────────────────── */
@@ -52,7 +77,7 @@
 .stepper {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   margin-left: auto;
   flex-wrap: wrap;
 }
@@ -60,15 +85,17 @@
 .step {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   padding: 5px 9px;
   border-radius: var(--r1);
-  font-size: 0.75rem;
+  font-size: var(--fs-2);
+  letter-spacing: -0.004em;
   color: var(--t3);
   background: none;
   border: 0;
   font-family: inherit;
   cursor: default;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
 
 .step[data-state='done'] {
@@ -78,6 +105,7 @@
 
 .step[data-state='done']:hover {
   background: var(--s2);
+  color: var(--t1);
 }
 
 .step[data-state='now'] {
@@ -86,8 +114,8 @@
 }
 
 .step i {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
   border: 1px solid var(--l3);
   display: grid;
@@ -95,16 +123,19 @@
   font-size: 8px;
   font-style: normal;
   font-family: var(--mono);
+  line-height: 1;
 }
 
 .step[data-state='done'] i {
   background: var(--t0);
   border-color: var(--t0);
   color: var(--s0);
+  font-size: 9px;
 }
 
 .step[data-state='now'] i {
   border-color: var(--t0);
+  box-shadow: 0 0 0 3px rgba(240, 236, 227, 0.08);
 }
 
 /* ── body ──────────────────────────────────────────────────────────────── */
@@ -112,9 +143,9 @@
 .main {
   flex: 1;
   width: 100%;
-  max-width: 1240px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 40px 24px 80px;
+  padding: 56px 32px 96px;
 }
 
 .main.wide {
@@ -123,48 +154,67 @@
 }
 
 .screen {
-  animation: rise 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: rise 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px);
   }
 }
 
+/* A one-line label above a heading. Mono, small, spaced — it labels the moment
+   ("Setup", "Nothing built yet") without competing with the display type. */
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--t3);
+  margin: 0 0 12px;
+}
+
+/* The screen header is the loudest type in the chrome and the only place the
+   serif is allowed above 20px. */
 .head {
-  max-width: 640px;
-  margin-bottom: 32px;
+  max-width: 660px;
+  margin-bottom: 40px;
 }
 
 .head h1 {
-  font-size: 1.75rem;
-  font-weight: 620;
-  letter-spacing: -0.028em;
-  line-height: 1.2;
-  margin: 0 0 10px;
+  font-family: var(--serif);
+  font-size: clamp(1.9rem, 1.4rem + 1.6vw, 2.6rem);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.06;
+  margin: 0 0 14px;
+  text-wrap: balance;
 }
 
 .head p {
   margin: 0;
   color: var(--t2);
   font-size: 0.9375rem;
-  line-height: 1.55;
+  line-height: 1.62;
+  max-width: 58ch;
+  text-wrap: pretty;
 }
 
 /* ── layout helpers ────────────────────────────────────────────────────── */
 
 .two {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 340px);
-  gap: 32px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+  gap: 48px;
   align-items: start;
 }
 
 @media (max-width: 900px) {
   .two {
     grid-template-columns: 1fr;
+    gap: 32px;
   }
 }
 
@@ -178,47 +228,78 @@
 
 .kinds {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
-  gap: 10px;
-  margin-bottom: 28px;
-}
-
-.kind {
-  text-align: left;
-  padding: 16px;
-  background: var(--s1);
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 1px;
+  margin-bottom: 32px;
+  background: var(--l2);
   border: 1px solid var(--l2);
   border-radius: var(--r2);
+  overflow: hidden;
+}
+
+/* One hairline grid instead of ten floating cards: the set reads as a table of
+   choices, which is what it is. */
+.kind {
+  text-align: left;
+  padding: 20px 18px 22px;
+  background: var(--s1);
+  border: 0;
+  border-radius: 0;
   font-family: inherit;
   cursor: pointer;
-  transition: border-color 0.14s, background 0.14s, transform 0.14s;
+  position: relative;
+  transition: background var(--dur) var(--ease);
+}
+
+.kind::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--t0);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 220ms var(--ease);
 }
 
 .kind:hover {
-  border-color: var(--l3);
   background: var(--s2);
-  transform: translateY(-1px);
+}
+
+.kind:hover::after {
+  transform: scaleX(1);
+  opacity: 0.35;
 }
 
 .kind[aria-pressed='true'] {
-  border-color: var(--t0);
   background: var(--s2);
-  box-shadow: inset 0 0 0 1px var(--t0);
+}
+
+.kind[aria-pressed='true']::after {
+  transform: scaleX(1);
+  opacity: 1;
 }
 
 .kind strong {
   display: block;
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   font-weight: 600;
-  letter-spacing: -0.01em;
-  margin-bottom: 3px;
+  letter-spacing: -0.012em;
+  margin-bottom: 5px;
+}
+
+.kind[aria-pressed='true'] strong {
+  color: var(--t0);
 }
 
 .kind span {
   display: block;
   font-size: 0.75rem;
-  color: var(--t3);
-  line-height: 1.4;
+  color: var(--t2);
+  line-height: 1.5;
+  max-width: 24ch;
 }
 
 /* ── field ─────────────────────────────────────────────────────────────── */
@@ -226,21 +307,22 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
 }
 
 .field > label,
 .field-label {
-  font-size: 0.8125rem;
-  font-weight: 550;
-  color: var(--t0);
-  letter-spacing: -0.005em;
+  font-size: var(--fs-2);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t2);
 }
 
 .field .hint {
   font-size: 0.75rem;
   color: var(--t3);
-  line-height: 1.45;
+  line-height: 1.55;
   margin-top: -2px;
 }
 
@@ -253,11 +335,11 @@
 .choices {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: 6px;
 }
 
 .choice {
-  padding: 8px 13px;
+  padding: 7px 13px;
   border-radius: 999px;
   border: 1px solid var(--l2);
   background: var(--s1);
@@ -265,11 +347,13 @@
   font-family: inherit;
   font-size: 0.8125rem;
   cursor: pointer;
-  transition: all 0.14s;
+  transition: border-color var(--dur) var(--ease),
+              background var(--dur) var(--ease),
+              color var(--dur) var(--ease);
 }
 
 .choice:hover {
-  border-color: var(--l3);
+  border-color: var(--l4);
   color: var(--t0);
 }
 
@@ -283,16 +367,18 @@
 .toggle-row {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 11px 13px;
+  gap: 11px;
+  padding: 13px 14px;
   border: 1px solid var(--l2);
-  border-radius: var(--r1);
+  border-radius: var(--r2);
   background: var(--s1);
   cursor: pointer;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
 
 .toggle-row:hover {
   border-color: var(--l3);
+  background: var(--s2);
 }
 
 .toggle-row input {
@@ -304,10 +390,10 @@
 }
 
 .toggle-row p {
-  margin: 2px 0 0;
+  margin: 3px 0 0;
   font-size: 0.75rem;
   color: var(--t3);
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .toggle-row strong {
@@ -321,8 +407,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 28px;
-  padding-top: 20px;
+  margin-top: 36px;
+  padding-top: 22px;
   border-top: 1px solid var(--l2);
 }
 
@@ -332,15 +418,15 @@
 
 .bar .note {
   font-size: 0.75rem;
-  color: var(--t3);
+  color: var(--t2);
 }
 
 /* ── theme cards ───────────────────────────────────────────────────────── */
 
 .themes {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 14px;
 }
 
 .theme-card {
@@ -352,12 +438,12 @@
   background: var(--s1);
   cursor: pointer;
   font-family: inherit;
-  transition: border-color 0.14s, transform 0.14s;
+  transition: border-color var(--dur) var(--ease), transform 200ms var(--ease);
 }
 
 .theme-card:hover {
-  border-color: var(--l3);
-  transform: translateY(-1px);
+  border-color: var(--l4);
+  transform: translateY(-2px);
 }
 
 .theme-card[aria-pressed='true'] {
@@ -366,53 +452,54 @@
 }
 
 .theme-prev {
-  height: 96px;
-  padding: 12px;
+  height: 104px;
+  padding: 14px;
   overflow: hidden;
   border-bottom: 1px solid var(--l2);
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
   justify-content: center;
 }
 
 .theme-meta {
-  padding: 11px 13px;
+  padding: 12px 14px 14px;
 }
 
 .theme-meta strong {
   display: block;
   font-size: 0.8125rem;
   font-weight: 600;
-  margin-bottom: 2px;
+  letter-spacing: -0.008em;
+  margin-bottom: 3px;
 }
 
 .theme-meta span {
   display: block;
   font-size: 0.75rem;
   color: var(--t3);
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
-/* ── error ─────────────────────────────────────────────────────────────── */
+/* ── error / notice ────────────────────────────────────────────────────── */
 
 .err {
   display: flex;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: 11px;
+  padding: 13px 15px;
   border: 1px solid var(--l2);
-  border-left: 3px solid var(--t0);
+  border-left: 2px solid var(--err);
   border-radius: var(--r1);
   background: var(--s2);
   font-size: 0.8125rem;
   color: var(--t1);
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 .err strong {
   display: block;
   color: var(--t0);
-  margin-bottom: 2px;
+  margin-bottom: 3px;
   font-weight: 600;
 }
 
@@ -420,7 +507,7 @@
    reports "Key works" through the same slot, and it was shouting in the alarm
    colour while telling the user everything was fine. */
 .err.ok {
-  border-left-color: var(--l4);
+  border-left-color: var(--ok);
 }
 
 .err.ok strong {
@@ -431,7 +518,7 @@
 
 .build-wrap {
   position: relative;
-  height: calc(100vh - 56px);
+  height: calc(100vh - 60px);
   background: var(--s1);
   overflow: hidden;
 }
@@ -461,27 +548,28 @@
 .hud {
   position: absolute;
   left: 50%;
-  bottom: 22px;
+  bottom: 24px;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   padding: 5px;
   border-radius: 999px;
-  background: rgba(16, 17, 19, 0.92);
+  background: rgba(12, 12, 13, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.4);
   z-index: 5;
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(14px);
 }
 
 .hud button {
   font-family: var(--mono);
   font-size: 0.6875rem;
-  color: rgba(255, 255, 255, 0.62);
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.6);
   background: none;
   border: 0;
-  padding: 6px 10px;
+  padding: 7px 11px;
   border-radius: 999px;
   cursor: pointer;
   transition: color 0.12s, background 0.12s;
@@ -502,18 +590,18 @@
   width: 1px;
   height: 16px;
   background: rgba(255, 255, 255, 0.16);
-  margin: 0 3px;
+  margin: 0 4px;
 }
 
 .hud .go {
-  color: #101113;
-  background: #fff;
+  color: var(--on-acc);
+  background: var(--acc);
   font-weight: 600;
 }
 
 .hud .go:hover {
-  color: #101113;
-  background: rgba(255, 255, 255, 0.88);
+  color: var(--on-acc);
+  background: #fff;
 }
 
 /* progress rail */
@@ -540,7 +628,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 24px;
+  padding: 11px 28px;
   border-bottom: 1px solid var(--l2);
   background: var(--s0);
   flex-wrap: wrap;
@@ -549,7 +637,7 @@
 .result-bar .title {
   font-size: 0.8125rem;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.012em;
   margin-right: auto;
 }
 
@@ -558,10 +646,11 @@
   font-size: 0.75rem;
   color: var(--t3);
   font-weight: 400;
+  margin-top: 1px;
 }
 
 .result-stage {
-  height: calc(100vh - 56px - 53px);
+  height: calc(100vh - 60px - 55px);
   background: var(--s2);
 }
 
@@ -576,47 +665,56 @@
 /* ── key screen ────────────────────────────────────────────────────────── */
 
 .keypad {
-  max-width: 460px;
-  margin: 40px auto;
-  text-align: center;
+  max-width: 520px;
+  margin: 8vh auto 0;
 }
 
+/* The one screen that gets display type at full size — it is a single moment
+   and there is nothing competing with it. */
 .keypad h1 {
-  font-size: 1.5rem;
-  font-weight: 620;
-  letter-spacing: -0.025em;
-  margin: 0 0 10px;
+  font-family: var(--serif);
+  font-size: clamp(2rem, 1.5rem + 2vw, 2.9rem);
+  font-weight: 400;
+  letter-spacing: -0.022em;
+  line-height: 1.04;
+  margin: 0 0 16px;
+  text-wrap: balance;
 }
 
 .keypad > p {
   color: var(--t2);
-  font-size: 0.875rem;
-  line-height: 1.6;
-  margin: 0 0 24px;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  margin: 0 0 28px;
+  max-width: 46ch;
 }
 
 .keypad form {
   text-align: left;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid var(--l2);
+  border-radius: var(--r3);
+  background: var(--s1);
 }
 
 .keypad a {
   color: var(--t0);
-  text-underline-offset: 2px;
+  text-underline-offset: 3px;
 }
 
 .key-note {
-  margin-top: 20px;
+  margin-top: 22px;
   font-size: 0.75rem;
   color: var(--t3);
-  line-height: 1.6;
+  line-height: 1.65;
   text-align: left;
-  padding: 12px 14px;
-  border: 1px solid var(--l2);
-  border-radius: var(--r1);
-  background: var(--s1);
+  padding: 14px 16px;
+  border: 1px solid var(--l1);
+  border-radius: var(--r2);
+  background: color-mix(in srgb, var(--s1) 60%, transparent);
 }
 
 /* ── empty/busy ────────────────────────────────────────────────────────── */
@@ -639,7 +737,7 @@
 .spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid var(--l2);
+  border: 1.5px solid var(--l2);
   border-top-color: var(--t0);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
@@ -656,13 +754,14 @@
 .drop {
   border: 1px dashed var(--l3);
   border-radius: var(--r2);
-  padding: 18px;
+  padding: 20px 18px;
   text-align: center;
   font-size: 0.8125rem;
   color: var(--t3);
-  background: var(--s1);
+  background: color-mix(in srgb, var(--s1) 70%, transparent);
   cursor: pointer;
-  transition: border-color 0.14s, background 0.14s;
+  line-height: 1.5;
+  transition: border-color 0.14s, background 0.14s, color 0.14s;
 }
 
 .drop:hover,
@@ -680,10 +779,10 @@
 .pdf-done {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 0.75rem;
   color: var(--t2);
-  padding: 9px 11px;
+  padding: 10px 12px;
   border: 1px solid var(--l2);
   border-radius: var(--r1);
   background: var(--s1);
@@ -703,27 +802,28 @@
   color: var(--t0);
 }
 
-
 /* ── projects list ─────────────────────────────────────────────────────── */
 
 .empty-first {
-  max-width: 480px;
-  margin: 72px auto;
-  text-align: center;
+  max-width: 520px;
+  margin: 14vh auto 0;
 }
 
 .empty-first h1 {
-  font-size: 1.5rem;
-  font-weight: 620;
-  letter-spacing: -0.025em;
-  margin: 0 0 12px;
+  font-family: var(--serif);
+  font-size: clamp(2rem, 1.5rem + 2vw, 2.75rem);
+  font-weight: 400;
+  letter-spacing: -0.022em;
+  line-height: 1.05;
+  margin: 0 0 14px;
 }
 
 .empty-first p {
   color: var(--t2);
   font-size: 0.9375rem;
-  line-height: 1.6;
-  margin: 0 0 24px;
+  line-height: 1.65;
+  margin: 0 0 28px;
+  max-width: 44ch;
 }
 
 .projects {
@@ -742,10 +842,11 @@
 .project {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 14px 16px;
+  gap: 18px;
+  padding: 15px 18px;
   background: var(--s1);
   flex-wrap: wrap;
+  transition: background var(--dur) var(--ease);
 }
 
 .project:hover {
@@ -761,23 +862,27 @@
   background: none;
   border: 0;
   padding: 0;
-  font-family: inherit;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  letter-spacing: -0.012em;
+  font-family: var(--serif);
+  font-size: 1.125rem;
+  font-weight: 400;
+  letter-spacing: -0.01em;
   color: var(--t0);
   cursor: pointer;
   text-align: left;
+  line-height: 1.25;
 }
 
 .project-name:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
 }
 
 .project-meta {
-  margin: 3px 0 0;
-  font-size: 0.75rem;
+  margin: 4px 0 0;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: -0.01em;
   color: var(--t3);
 }
 
@@ -786,6 +891,13 @@
   gap: 6px;
   align-items: center;
   flex-wrap: wrap;
+  opacity: 0.55;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.project:hover .project-actions,
+.project:focus-within .project-actions {
+  opacity: 1;
 }
 
 .btn.danger {
@@ -794,16 +906,17 @@
 }
 
 .btn.danger:hover:not(:disabled) {
-  background: var(--s3);
-  border-color: var(--t2);
+  background: var(--err-dim);
+  border-color: var(--err);
+  color: var(--err);
 }
 
 /* ── workbench ─────────────────────────────────────────────────────────── */
 
 .bench {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  height: calc(100vh - 56px - 53px);
+  grid-template-columns: minmax(0, 1fr) 372px;
+  height: calc(100vh - 60px - 55px);
 }
 
 @media (max-width: 1000px) {
@@ -841,38 +954,43 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 8px 0 14px;
-  height: 44px;
+  padding: 0 8px 0 16px;
+  height: 46px;
   border-bottom: 1px solid var(--l2);
   flex: none;
 }
 
 .inspector-head strong {
-  font-size: 0.8125rem;
+  font-size: var(--fs-1);
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+  color: var(--t2);
   margin-right: auto;
 }
 
 .tabs {
   display: flex;
   gap: 2px;
+  background: var(--s0);
+  padding: 2px;
+  border-radius: var(--r1);
 }
 
 .tab {
   font-family: inherit;
   font-size: 0.75rem;
-  padding: 5px 9px;
-  border-radius: var(--r1);
+  padding: 5px 10px;
+  border-radius: 2px;
   border: 0;
   background: none;
   color: var(--t3);
   cursor: pointer;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
 
 .tab:hover {
   color: var(--t1);
-  background: var(--s2);
 }
 
 .tab[aria-selected='true'] {
@@ -883,7 +1001,7 @@
 .inspector-body {
   flex: 1;
   overflow-y: auto;
-  padding: 14px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -901,15 +1019,15 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 7px 7px 7px 11px;
+  padding: 8px 8px 8px 12px;
   background: var(--s1);
   border-bottom: 1px solid var(--l2);
 }
 
 .sec-card-head strong {
-  font-size: 0.75rem;
+  font-size: var(--fs-1);
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.085em;
   text-transform: uppercase;
   color: var(--t1);
   margin-right: auto;
@@ -942,21 +1060,21 @@
 }
 
 .sec-card-body {
-  padding: 11px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 11px;
+  gap: 12px;
 }
 
 .edit-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
 }
 
 .edit-field > span {
-  font-size: 0.6875rem;
-  letter-spacing: 0.03em;
+  font-size: 10px;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--t3);
 }
@@ -964,7 +1082,7 @@
 .edit-field .input,
 .edit-field .textarea {
   font-size: 0.8125rem;
-  padding: 7px 9px;
+  padding: 8px 10px;
 }
 
 .row-fields {
@@ -976,7 +1094,7 @@
 .insp-note {
   font-size: 0.75rem;
   color: var(--t3);
-  line-height: 1.55;
+  line-height: 1.6;
   margin: 0;
 }
 
@@ -1018,10 +1136,10 @@
   display: flex;
   gap: 8px;
   font-size: 0.75rem;
-  line-height: 1.5;
-  padding: 8px 10px;
+  line-height: 1.55;
+  padding: 9px 11px;
   border: 1px solid var(--l2);
-  border-left: 3px solid var(--t1);
+  border-left: 2px solid var(--warn);
   border-radius: var(--r1);
   background: var(--s2);
   color: var(--t1);
@@ -1036,25 +1154,25 @@
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 24px;
+  bottom: 26px;
   transform: translateX(-50%);
-  background: rgba(16, 17, 19, 0.95);
-  color: #fff;
+  background: rgba(20, 20, 21, 0.96);
+  color: var(--t0);
   font-size: 0.8125rem;
-  padding: 9px 15px;
+  padding: 10px 16px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: var(--el2);
   z-index: 90;
-  animation: toastin 0.2s ease both;
+  animation: toastin 0.22s var(--ease) both;
 }
 
 @keyframes toastin {
   from {
     opacity: 0;
-    transform: translate(-50%, 6px);
+    transform: translate(-50%, 8px);
   }
 }
-
 
 /* ── page tabs ─────────────────────────────────────────────────────────── */
 
@@ -1062,7 +1180,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 7px 20px;
+  padding: 8px 28px;
   border-bottom: 1px solid var(--l2);
   background: var(--s1);
   overflow-x: auto;
@@ -1087,7 +1205,7 @@
   color: var(--t2);
   background: none;
   border: 0;
-  padding: 5px 9px;
+  padding: 5px 10px;
   cursor: pointer;
   white-space: nowrap;
   max-width: 160px;
@@ -1101,7 +1219,7 @@
 
 .page-tab .page-x {
   color: var(--t3);
-  padding: 5px 7px 5px 0;
+  padding: 5px 8px 5px 0;
   font-size: 0.8125rem;
   line-height: 1;
 }
@@ -1117,7 +1235,7 @@
   background: none;
   border: 1px dashed var(--l2);
   border-radius: var(--r1);
-  padding: 5px 9px;
+  padding: 5px 10px;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -1151,12 +1269,13 @@
   display: block;
 }
 
+/* ── saved key ─────────────────────────────────────────────────────────── */
 
 .saved-key {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 14px;
+  padding: 13px 15px;
   border: 1px solid var(--l3);
   border-radius: var(--r2);
   background: var(--s1);
@@ -1181,19 +1300,18 @@
   color: var(--t2);
 }
 
-
 /* ── stage clock ───────────────────────────────────────────────────────── */
 
 .clock {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  width: 260px;
-  padding: 12px 14px;
-  border: 1px solid var(--l2);
+  gap: 8px;
+  width: 268px;
+  padding: 13px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--r2);
-  background: rgba(12, 13, 15, 0.9);
-  backdrop-filter: blur(6px);
+  background: rgba(11, 11, 12, 0.9);
+  backdrop-filter: blur(10px);
 }
 
 .clock-row {
@@ -1203,18 +1321,21 @@
   gap: 10px;
 }
 
+/* A clock is a number, so it gets the mono face and tabular figures: the
+   digits must not shuffle sideways as the seconds tick. */
 .clock-elapsed {
   font-family: var(--mono);
-  font-size: 1.125rem;
+  font-size: 1.25rem;
   font-variant-numeric: tabular-nums;
+  font-weight: 500;
   color: #fff;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
 
 .clock-meta {
   font-size: 0.6875rem;
   color: rgba(255, 255, 255, 0.5);
-  line-height: 1.4;
+  line-height: 1.45;
   text-align: right;
 }
 
@@ -1243,19 +1364,19 @@
 }
 
 .clock[data-state='late'] .clock-bar i {
-  background: #d9a13a;
+  background: var(--warn);
 }
 
 .clock[data-state='late'] .clock-elapsed {
-  color: #e8bd63;
+  color: var(--warn);
 }
 
 .clock[data-state='overdue'] .clock-bar i {
-  background: #d4564e;
+  background: var(--err);
 }
 
 .clock[data-state='overdue'] .clock-elapsed {
-  color: #ef7b73;
+  color: var(--err);
 }
 
 .clock-cancel {
@@ -1264,8 +1385,8 @@
   color: rgba(255, 255, 255, 0.62);
   background: none;
   border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 4px;
-  padding: 3px 8px;
+  border-radius: var(--r1);
+  padding: 3px 9px;
   cursor: pointer;
 }
 
@@ -1277,17 +1398,26 @@
 .clock-label {
   font-family: var(--mono);
   font-size: 0.625rem;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.09em;
   color: rgba(255, 255, 255, 0.42);
   text-transform: uppercase;
 }
 
+/* ── the brief: the box the whole page is built from ───────────────────── */
 
-/* the brief: the box the whole page is built from */
 .prompt-box {
-  min-height: 210px;
-  font-size: 14.5px;
-  line-height: 1.62;
+  min-height: 230px;
+  padding: 14px 15px;
+  font-size: 0.9375rem;
+  line-height: 1.68;
   resize: vertical;
+  background: var(--s1);
 }
-.prompt-box::placeholder { color: var(--t3); }
+
+.prompt-box:focus {
+  background: var(--s1);
+}
+
+.prompt-box::placeholder {
+  color: var(--t3);
+}
