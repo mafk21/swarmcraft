@@ -17,7 +17,11 @@ export default function KeyScreen() {
       .then((k) => {
         if (!k) return;
         patch({ hasKey: true });
-        setSavedMask(`${k.slice(0, 6)}…${k.slice(-4)}`);
+        /* Show enough of the prefix to identify the FORMAT: an `AQ.Ab…` key and
+           an `AIza…` key authenticate differently, so a user staring at
+           "AQ.Ab8…wBiA" cannot tell whether that is right. The prefix is the
+           only part that carries a diagnosis, and it is not a secret. */
+        setSavedMask(`${k.slice(0, 8)}…${k.slice(-4)}`);
         /* Boot normally sends a returning user straight past this screen (see
            App.tsx). This is the path where they arrived here deliberately, so
            the saved key is shown rather than silently navigated away from. */
@@ -32,8 +36,18 @@ export default function KeyScreen() {
     const trimmed = key.trim();
     if (!trimmed || busy) return;
 
+    /* Google now issues two kinds of key and both are valid:
+         · `AIza…`  — the old "Standard" key (being phased out)
+         · `AQ.Ab…` — the new "Auth" key AI Studio issues by default
+       The old check was a bare length test, and the screen told the user keys
+       start with `AIza` — so a brand-new AQ. key looked wrong to the person
+       holding it, and the app had no way to tell them otherwise. */
     if (trimmed.length < 20) {
       setMsg({ ok: false, text: 'That looks too short to be a Gemini key.' });
+      return;
+    }
+    if (/^AQ\.$/i.test(trimmed) || trimmed.length < 30) {
+      setMsg({ ok: false, text: 'That looks cut off — paste the whole key, starting AQ.Ab… or AIza…' });
       return;
     }
 
@@ -82,9 +96,19 @@ export default function KeyScreen() {
               <strong>Saved key</strong>
               <span className="mono">{savedMask}</span>
             </div>
-            <button className="btn btn-sm" onClick={useSaved}>
-              Continue
-            </button>
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn btn-sm" onClick={useSaved}>
+                Use this key
+              </button>
+              {/* The input is already on the page, but a returning user who came
+                  here to CHANGE the key should not have to infer that. */}
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={() => document.getElementById('k')?.focus()}
+              >
+                Use a different key
+              </button>
+            </div>
           </div>
         )}
 
@@ -97,7 +121,7 @@ export default function KeyScreen() {
               type="password"
               autoComplete="off"
               spellCheck={false}
-              placeholder="AIza…"
+              placeholder="AQ.Ab… or AIza…"
               value={key}
               onChange={(e) => setKey(e.target.value)}
             />
@@ -106,7 +130,9 @@ export default function KeyScreen() {
               <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
                 aistudio.google.com/apikey
               </a>
-              . No card needed. Keys start with <span className="mono">AIza</span>.
+              . No card needed. Google has two key formats and both work here —{' '}
+              <span className="mono">AQ.Ab…</span> (what AI Studio issues now) and{' '}
+              <span className="mono">AIza…</span> (the older kind).
             </p>
           </div>
 

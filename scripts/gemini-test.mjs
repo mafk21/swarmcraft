@@ -17,7 +17,7 @@ let calls = [];
 let respond = () => ({ status: 200, body: {} });
 
 globalThis.fetch = async (url, init = {}) => {
-  calls.push({ url: String(url), body: init.body ? JSON.parse(init.body) : null });
+  calls.push({ url: String(url), body: init.body ? JSON.parse(init.body) : null, headers: init.headers ?? {} });
   const r = respond(String(url), init);
   if (r.hang) return new Promise(() => {}); // never settles
   if (r.throw) throw r.throw;
@@ -71,6 +71,38 @@ const GOOD_SPEC = {
 };
 const ok = (body) => () => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: JSON.stringify(body) }] } }] } });
 
+/* ── 0. the key travels in a header, never in the URL ────────────────────
+   This is the bug that made every build fail for a new-style key. Google now
+   issues `AQ.Ab…` "Auth" keys by default, and they do NOT authenticate through
+   `?key=`. The same request with the same key in `x-goog-api-key` works. It is
+   reported against Bazarr, Lingarr and others with the identical symptom.
+   The header is also what Google documents, and keeps the key out of logs. */
+
+reset();
+respond = ok(GOOD_SPEC);
+await g.buildSite('AQ.Ab8Xk2nQ9wBiA_TESTKEY_123456789', 'store', {});
+
+assert.ok(!/key=/i.test(calls[0].url), `the key must not be in the URL, got ${calls[0].url}`);
+assert.ok(!calls[0].url.includes('AQ.Ab'), 'the key must not leak into the URL at all');
+assert.equal(calls[0].headers['x-goog-api-key'], 'AQ.Ab8Xk2nQ9wBiA_TESTKEY_123456789',
+  'the key must be sent as the x-goog-api-key header');
+assert.match(calls[0].url, /:generateContent/, 'the endpoint itself is unchanged');
+
+/* both key formats must authenticate the same way */
+reset();
+respond = ok(GOOD_SPEC);
+await g.buildSite('AIzaSyLegacyStandardKey1234567890', 'store', {});
+assert.equal(calls[0].headers['x-goog-api-key'], 'AIzaSyLegacyStandardKey1234567890',
+  'legacy AIza keys use the same header');
+
+/* and setup must use the header too, or the key screen lies */
+reset();
+respond = ok('ready');
+await g.testKey('AQ.Ab8Xk2nQ9wBiA_TESTKEY_123456789');
+assert.equal(calls[0].headers['x-goog-api-key'], 'AQ.Ab8Xk2nQ9wBiA_TESTKEY_123456789',
+  'the setup probe must authenticate the same way the build does');
+assert.ok(!/key=/i.test(calls[0].url), 'setup must not put the key in the URL either');
+
 /* ── 1. the happy path: one call, validated spec, no extra round trips ───── */
 
 reset();
@@ -105,7 +137,8 @@ for (const t of ['hero', 'features', 'pricing', 'products', 'testimonials', 'faq
 }
 assert.match(sys, /Return ONE JSON object/, 'the prompt must state the output contract');
 assert.match(sys, /editorial.*studio.*retail.*nordic.*brutalist.*warm.*terminal.*minimal/s, 'the prompt must list the themes');
-assert.match(calls[0].url, /key=KEY/, 'key goes in the query');
+assert.equal(calls[0].headers['x-goog-api-key'], 'KEY', 'the key goes in the header');
+assert.ok(!/key=/i.test(calls[0].url), 'and never in the query — AQ. keys are rejected there');
 assert.ok(!/KEY/.test(String(sent.contents)), 'the key must never be echoed into the prompt');
 
 /* ── 2. the user's own words are primary, and the PDF text is included ───── */
@@ -149,7 +182,7 @@ await expectFail(() => g.buildSite('k', 'store', {}), /boom/, '500 surfaces the 
 
 reset();
 respond = () => ({ throw: new TypeError('Failed to fetch') });
-await expectFail(() => g.buildSite('k', 'store', {}), /Could not reach Google/, 'offline is not a crash');
+await expectFail(() => g.buildSite('k', 'store', {}), /could not be reached|Could not reach Google/i, 'offline is not a crash');
 
 reset();
 respond = () => ({ status: 200, body: { promptFeedback: { blockReason: 'SAFETY' } } });
@@ -472,9 +505,20 @@ assert.equal(limited.ok, true, '429 means the key is valid but throttled');
 assert.match(limited.message, /rate-limiting|wait/i);
 
 reset(); respond = () => ({ throw: new TypeError('offline') });
-const down = await g.testKey('k');
+const down = await g.testKey('AIzaSyLegacyStandardKey1234567890');
 assert.equal(down.ok, false);
-assert.match(down.message, /Could not reach Google/);
+assert.match(down.message, /could not be reached|Could not reach Google/i);
+
+/* An unreachable Google must give DIFFERENT advice for the two key formats.
+   "Check your connection" sent an AQ. user to their wifi for a refusal that had
+   nothing to do with the network. */
+reset(); respond = () => ({ throw: new TypeError('offline') });
+const downAuth = await g.testKey('AQ.Ab8Xk2nQ9wBiA_TESTKEY_123456789');
+assert.equal(downAuth.ok, false);
+assert.match(downAuth.message, /AQ\.|restricted|not being enabled|well formed/i,
+  'an AQ. key that cannot reach Google must be told what that actually implies');
+assert.notEqual(downAuth.message, down.message,
+  'the two key formats must not get identical advice for the same failure');
 
 /* ── 8. the deterministic Muses do their job ────────────────────────────── */
 

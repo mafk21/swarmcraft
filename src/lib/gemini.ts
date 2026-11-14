@@ -80,10 +80,60 @@ let liveModel: string | null = null;
    inside call(), because `thinkingBudget: 0` is silently ignored by Gemini 3.x
    and `thinkingLevel: 'minimal'` is a hard 400 on 3.8 Flash. Sending one shape
    to every model is what made the app both slow and intermittently broken. */
-const ENDPOINT = (model: string, key: string) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
-    key
-  )}`;
+/**
+ * What a thrown fetch actually means.
+ *
+ * In a browser, `fetch` THROWS for a CORS rejection and for a dead network
+ * alike — the page is not allowed to tell them apart, so it cannot report the
+ * status. "Could not reach Google. Check your connection." was therefore a
+ * guess, and for a user whose key began with `AQ.` it was the wrong guess: the
+ * connection was fine, the request was being refused for the shape of its URL.
+ *
+ * The key format is a fact we DO have, and it is diagnostic. Saying so is the
+ * difference between the user checking their wifi forever and the user
+ * checking the thing that is actually wrong.
+ */
+function connectionFailure(key: string, what: string): GeminiError {
+  const authKey = key.trim().startsWith('AQ.');
+  if (authKey) {
+    return new GeminiError(
+      `${what} This browser could not read Google's reply. That usually means the request was refused before it was answered, and the most common cause with a new-style AQ. key is the key being restricted or the API not being enabled on its project. The key itself looks well formed.`,
+      0
+    );
+  }
+  return new GeminiError(
+    `${what} Check your connection, and check that the key was copied in full — Google gives no reply at all when the key is rejected at the network edge.`,
+    0
+  );
+}
+
+/**
+ * The endpoint, WITHOUT the key in the URL.
+ *
+ * This was `?key=...` — the pattern in every tutorial — and it is what broke
+ * every build for a user whose key started with `AQ.`
+ *
+ * Google has replaced the old "Standard" keys (`AIza…`) with "Auth" keys
+ * (`AQ.Ab…`), and AI Studio now issues only the new kind. The two do not
+ * authenticate the same way: an `AQ.` key in a query parameter is not accepted,
+ * while the same key in the `x-goog-api-key` header works. This is not a niche
+ * edge case — it is reported against Bazarr, Lingarr and half a dozen other
+ * projects, all with the identical symptom, and all fixed by moving the key out
+ * of the URL and into the header.
+ *
+ * The header is also what Google documents, and it keeps the secret out of
+ * URLs, logs and browser history. Both key formats work with it.
+ */
+const ENDPOINT = (model: string) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+/** Auth + content type. The key never touches the URL. */
+function headersFor(key: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'x-goog-api-key': key,
+  };
+}
 
 export type AnswerMap = Record<string, string | string[] | boolean>;
 
@@ -445,9 +495,9 @@ async function call(
       try {
         res = await Promise.race([
           guard,
-          fetch(`${ENDPOINT(model, key)}&alt=sse`, {
+          fetch(`${ENDPOINT(model)}?alt=sse`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: headersFor(key),
             body: JSON.stringify(payload),
             signal: ctl.signal,
           }),
@@ -457,7 +507,7 @@ async function call(
         if (timedOut) throw outOfTime();
         if (signal?.aborted) throw new GeminiError('Cancelled.', 0);
         if (e instanceof DOMException && e.name === 'AbortError') throw new TryNext('silent');
-        throw new GeminiError('Could not reach Google. Check your connection.', 0);
+        throw connectionFailure(key, 'Google could not be reached.');
       }
 
       if (!res.ok) {
@@ -590,7 +640,7 @@ async function call(
       if (e instanceof TryNext) throw e;
       if (e instanceof GeminiError) throw e;
       if (timedOut) throw outOfTime();
-      throw new GeminiError('Could not reach Google. Check your connection.', 0);
+      throw connectionFailure(key, 'Google could not be reached.');
     } finally {
       cleanup();
     }
@@ -708,9 +758,9 @@ export async function testKey(
       const model = candidates[i];
       let res: Response;
       try {
-        res = await fetch(ENDPOINT(model, key), {
+        res = await fetch(ENDPOINT(model), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: headersFor(key),
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: 'Reply with the single word: ready' }] }],
             generationConfig: {
@@ -722,7 +772,7 @@ export async function testKey(
           signal: ctl.signal,
         });
       } catch {
-        return { ok: false, message: 'Could not reach Google. Check your connection.' };
+        return { ok: false, message: connectionFailure(key, 'Google could not be reached.').message };
       }
 
       if (res.ok) {
