@@ -530,6 +530,30 @@ export function validateSpec(raw: unknown): SpecResult {
     }
   }
 
+  /* A nav link that points at a section the page does not have is a dead
+     link: the reader clicks and nothing happens. Drop it and say so. This is
+     the same rule duplication already applied to new pages — the generated
+     page never had it, so a nav could promise a section that was never built. */
+  if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+    const c = candidate as Record<string, unknown>;
+    const nav = c.nav as { links?: unknown[] } | undefined;
+    if (nav && Array.isArray(nav.links)) {
+      const sections = (Array.isArray(c.sections) ? c.sections : []).filter(
+        (x): x is Section => !!x && typeof x === 'object' && 'type' in (x as object)
+      );
+      const before = nav.links.length;
+      nav.links = nav.links.filter(
+        (l) =>
+          !!l &&
+          typeof l === 'object' &&
+          typeof (l as Record<string, unknown>).href === 'string' &&
+          canResolve((l as { href: string }).href, sections)
+      );
+      const gone = before - nav.links.length;
+      if (gone > 0) repairs.push(`removed ${gone} nav link(s) pointing at nothing`);
+    }
+  }
+
   const parsed = SiteSpecSchema.safeParse(candidate);
   if (parsed.success) return { ok: true, spec: parsed.data, repairs };
 

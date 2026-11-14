@@ -58,6 +58,15 @@ const esc = (s: string): string =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+/** A phone number written the way people write it ("013 812 4400",
+    "+966 13 812 4400") into the digits a `tel:` link needs. The visible text
+    keeps the original spacing; only the href is normalised. */
+const telHref = (s: string): string => {
+  const plus = s.trim().startsWith('+');
+  const digits = s.replace(/[^0-9]/g, '');
+  return plus ? `+${digits}` : digits;
+};
+
 /* ── section renderers ───────────────────────────────────────────────────── */
 
 type R = (s: Section) => string;
@@ -311,7 +320,9 @@ const contact: R = (s) => {
   if (s.type !== 'contact') return '';
   const rows = [
     s.email ? `<li><span class="k">Email</span><a href="mailto:${esc(s.email)}">${esc(s.email)}</a></li>` : '',
-    s.phone ? `<li><span class="k">Phone</span><span>${esc(s.phone)}</span></li>` : '',
+    s.phone
+      ? `<li><span class="k">Phone</span><a href="tel:${esc(telHref(s.phone))}">${esc(s.phone)}</a></li>`
+      : '',
     s.address ? `<li><span class="k">Address</span><span>${esc(s.address)}</span></li>` : '',
   ]
     .filter(Boolean)
@@ -326,11 +337,16 @@ const contact: R = (s) => {
       </ul>
       ${
         s.form
-          ? `<form class="contact-form" onsubmit="return false">
-        <label>Name<input type="text" name="name" placeholder="Your name" /></label>
-        <label>Email<input type="email" name="email" placeholder="you@example.com" /></label>
-        <label>Message<textarea name="message" rows="4" placeholder="Say something"></textarea></label>
-        <button type="submit" class="cta">Send</button>
+          ? `<form class="contact-form" action="${
+              s.email ? esc(`mailto:${s.email}`) : ''
+            }" method="post" enctype="text/plain" data-mailto="${
+              s.email ? esc(`mailto:${s.email}`) : ''
+            }"${s.email ? '' : ' hidden'}>
+        <label>Name<input type="text" name="name" required autocomplete="name" /></label>
+        <label>Email<input type="email" name="email" required autocomplete="email" /></label>
+        <label>Message<textarea name="message" rows="4" required></textarea></label>
+        <button type="submit" class="cta">Send message</button>
+        <p class="form-note" role="status" aria-live="polite"></p>
       </form>`
           : ''
       }
@@ -559,6 +575,8 @@ blockquote footer{font-size:0.8125rem;color:var(--ink-2);letter-spacing:0.02em}
   border:1px solid var(--rule);border-radius:var(--radius);padding:10px 12px}
 .contact-form input:focus,.contact-form textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
 .contact-form .cta{margin-top:4px;align-self:flex-start;cursor:pointer;font-family:inherit}
+.contact-form[hidden]{display:none}
+.form-note{margin:0;font-size:0.8125rem;color:var(--ink-2);min-height:1.2em}
 
 /* schedule */
 .days{display:grid;gap:calc(var(--space)*4);grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
@@ -725,6 +743,25 @@ const SITE_JS = `
   }, { rootMargin: '0px 0px -12% 0px', threshold: 0.08 });
   var rs = document.querySelectorAll('.reveal');
   for (i = 0; i < rs.length; i++) io.observe(rs[i]);
+
+  /* The contact form has no server behind it. Rather than pretending to send,
+     it opens the visitor's mail app with the message filled in — so the words
+     actually reach the person who owns the address. */
+  var forms = document.querySelectorAll('.contact-form[data-mailto]');
+  for (i = 0; i < forms.length; i++) (function(f){
+    f.addEventListener('submit', function(ev){
+      var to = f.getAttribute('data-mailto');
+      if (!to) return;
+      ev.preventDefault();
+      var get = function(n){ var el = f.elements[n]; return el && el.value ? el.value : ''; };
+      var NL = String.fromCharCode(10);
+      var body = 'Name: ' + get('name') + NL + 'Email: ' + get('email') + NL + NL + get('message');
+      var note = f.querySelector('.form-note');
+      if (note) note.textContent = 'Opening your mail app with the message filled in.';
+      window.location.href = to + '?subject=' + encodeURIComponent('Website enquiry')
+        + '&body=' + encodeURIComponent(body);
+    });
+  })(forms[i]);
 
   /* The nav gets a shadow once the page has moved. */
   var nav = document.querySelector('.nav');
