@@ -55,12 +55,13 @@ export default function ProjectsScreen() {
     return (
       <div className="screen">
         <div className="empty-first">
+          <p className="eyebrow">Nothing built yet</p>
           <h1>No sites yet</h1>
           <p>
             Swarmsmith builds one page at a time. Answer a few questions, choose what to include,
             then watch nine cursors build it. Everything stays in this browser.
           </p>
-          <div className="row" style={{ gap: 8, justifyContent: 'center' }}>
+          <div className="row" style={{ gap: 10 }}>
             <button
               className="btn btn-primary btn-lg"
               onClick={() => (hasKey ? startNew() : patch({ step: 'key' }))}
