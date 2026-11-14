@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp, failBuild } from '../store';
-import { getApiKey } from '../../lib/db';
+import { getApiKey, saveProject } from '../../lib/db';
 import { buildSite, GeminiError, BUDGET_MS, type MuseReport } from '../../lib/gemini';
 import { renderDocument } from '../../lib/render';
 import { snapshotHtml } from '../../lib/blueprint';
@@ -217,7 +217,20 @@ export default function BuildScreen() {
           };
         }
 
+        /* Save it before showing it.
+           A build used to live only in memory until the user pressed Save on
+           the result screen, so closing the tab — or never noticing the button
+           — meant the page was gone and "Your sites" was empty. The build IS
+           the artefact; keeping it is the least surprising thing to do with it.
+           Failure here is not fatal: the page still renders, and the result
+           screen says it was not saved. */
         patch({ spec: finalSpec });
+        try {
+          const id = await saveProject(finalSpec, { kind });
+          patch({ projectId: id, saved: true });
+        } catch {
+          /* storage refused: the result screen offers export instead */
+        }
 
         /* render the real document */
         const html = renderDocument(finalSpec);

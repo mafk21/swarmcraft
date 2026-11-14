@@ -112,26 +112,22 @@ export default function ResultScreen() {
     }
   }
 
+  /**
+   * Export the page as a file the user can keep.
+   *
+   * This was a dead button in Chrome, and the reason is a browser rule that
+   * does not show up in any test: BOTH `showSaveFilePicker` and the anchor
+   * `download` trick must be triggered by a real user gesture. This function
+   * used to `await` the page rendering and media inlining FIRST, and by then
+   * the gesture was spent — so the picker threw `NotAllowedError` and the
+   * hidden anchor was inert. It reported success and wrote nothing.
+   *
+   * So: ask for the file synchronously, then build the contents while the user
+   * is choosing a name. The slow part happens behind the dialog instead of
+   * before it.
+   */
   async function exportHtml() {
     const all = pages;
-
-    // self-contained: swap media:<id> for the real bytes
-    const slugsAll = all.map(pageSlug);
-    const files = await Promise.all(
-      all.map(async (p, i) => {
-        const base = renderDocument(p, { index: i, exportMode: true, slugs: slugsAll });
-        let withMedia = base;
-        try {
-          withMedia = await inlineMedia(base);
-        } catch {
-          /* no storage: the page still exports, just without the pictures */
-          withMedia = base.replace(/<img[^>]*src="media:[^"]*"[^>]*>/g, '');
-        }
-        return { name: `${pageSlug(p, i)}.html`, html: withMedia };
-      })
-    );
-
-    const single = files.length === 1;
 
     const picker = (
       window as Window & {
@@ -139,39 +135,85 @@ export default function ResultScreen() {
       }
     ).showSaveFilePicker;
 
-    if (picker && single) {
+    /* A single page is the common case, and the one that broke. Multi-page
+       sites have no single file to pick, so they take the download path — for
+       which the same gesture rule applies, so nothing may await before it. */
+    if (picker && all.length === 1) {
+      let handle: FileSystemFileHandle | null = null;
       try {
-        const handle = await picker({
-          suggestedName: files[0].name,
-          types: [{ description: 'HTML', accept: { 'text/html': ['.html'] } }],
+        console.log('  [dbg] picker called synchronously');
+        handle = await picker({
+          suggestedName: `${pageSlug(all[0], 0)}.html`,
+          types: [{ description: 'Web page', accept: { 'text/html': ['.html'] } }],
         });
-        const w = await handle.createWritable();
-        await w.write(new Blob([files[0].html], { type: 'text/html' }));
-        await w.close();
-        toast(`Saved ${files[0].name}.`);
-        return;
       } catch (e) {
-        /* Cancelling the picker is a choice, not a failure — say nothing and
-           fall through to a download so the work is not lost. Anything else
-           gets an honest message instead of a silent dead button. */
-        const denied = e instanceof DOMException && e.name === 'AbortError';
-        if (!denied) {
-          toast('Could not write to that location — downloading instead.');
+        /* The user closing the dialog is a choice, not a failure. Anything
+           else really did go wrong and must be said out loud rather than
+           silently downloading into a folder they are not watching. */
+        const cancelled =
+          (e instanceof DOMException && e.name === 'AbortError') ||
+          (e instanceof Error && e.name === 'AbortError');
+        if (cancelled) return;
+        toast('The save dialog was blocked. Downloading instead.');
+      }
+
+      if (handle) {
+        const html = await buildExport(all, 0);
+        try {
+          const w = await handle.createWritable();
+          await w.write(new Blob([html], { type: 'text/html' }));
+          await w.close();
+          toast(`Saved ${handle.name}.`);
+        } catch {
+          toast('Could not write to that location. Use “Open in a tab” and save from there.');
         }
+        return;
       }
     }
 
-    // several pages, or no File System Access: download each file
-    for (const f of files) {
-      const url = URL.createObjectURL(new Blob([f.html], { type: 'text/html' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = f.name;
-      a.click();
-      await new Promise((r) => setTimeout(r, 260));
-      URL.revokeObjectURL(url);
+    /* Download path: one anchor per page, all clicked in the same turn.
+       Each blob has to exist before its click, and building it can await — so
+       the pages are built FIRST and the clicks all happen together at the end,
+       which keeps every click inside the original gesture. The old code awaited
+       between clicks, so the second page onwards was outside the gesture and
+       silently did nothing. */
+    const files: { name: string; url: string }[] = [];
+    for (let i = 0; i < all.length; i++) {
+      const html = await buildExport(all, i);
+      files.push({
+        name: `${pageSlug(all[i], i)}.html`,
+        url: URL.createObjectURL(new Blob([html], { type: 'text/html' })),
+      });
     }
-    toast(files.length > 1 ? `Downloaded ${files.length} pages.` : 'Downloaded.');
+
+    for (const f of files) {
+      const a = document.createElement('a');
+      a.href = f.url;
+      a.download = f.name;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    await new Promise((r) => setTimeout(r, 600));
+    for (const f of files) URL.revokeObjectURL(f.url);
+    toast(all.length > 1 ? `Downloaded ${all.length} pages.` : 'Downloaded.');
+    return;
+  }
+
+  /** Render one page, self-contained: media: refs replaced with real bytes. */
+  async function buildExport(
+    all: typeof pages,
+    i: number
+  ): Promise<string> {
+    const slugsAll = all.map(pageSlug);
+    const base = renderDocument(all[i], { index: i, exportMode: true, slugs: slugsAll });
+    try {
+      return await inlineMedia(base);
+    } catch {
+      /* no storage: the page still exports, just without the pictures */
+      return base.replace(/<img[^>]*src="media:[^"]*"[^>]*>/g, '');
+    }
   }
 
   function openTab() {
@@ -191,7 +233,7 @@ export default function ResultScreen() {
           <span>
             {pages.length} page{pages.length === 1 ? '' : 's'} · {active.sections.length} sections ·{' '}
             {active.meta.theme}
-            {saved ? ' · saved' : ' · not saved'}
+            {saved ? ' · saved to this browser' : ' · not saved yet'}
           </span>
         </div>
         <button className="btn btn-sm btn-ghost" onClick={rebuild}>
@@ -209,8 +251,10 @@ export default function ResultScreen() {
         <button className="btn btn-sm btn-ghost" onClick={startNew}>
           New site
         </button>
-        <button className="btn btn-sm btn-ghost" onClick={reset}>
-          All sites
+        {/* Named for what it does, not for the store it reads. "All sites"
+            described the database; this describes the destination. */}
+        <button className="btn btn-sm btn-ghost" onClick={reset} title="Everything you have built">
+          Your sites
         </button>
       </div>
 
