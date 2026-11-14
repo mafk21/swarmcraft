@@ -3,22 +3,45 @@
 
    Nine cursors. One canvas. They rebuild a real page.
 
-   How it works:
-   1. A BuildPlan is made from the Blueprint's steps — each step gets a Muse,
-      a start time and a duration, weighted by how much work it is.
-   2. Every frame, each cursor steers toward its current step's anchor with
-      flocking (separation + cohesion + arrival). They do NOT move in straight
-      lines and they do NOT teleport.
-   3. Each cursor paints into the canvas when it arrives:
-        box   → crosshair corners, drag, live W×H badge, then the fill
-        line  → pen stroke from one end to the other, with a ruler guide
-        text  → typed glyph by glyph with a blinking caret
-   4. The camera follows the action down the page.
-   5. At the end, everything is complete, we fade the canvas out and the real
-      interactive page fades in underneath.
+   ── what it is copying, and why ─────────────────────────────────────────────
+
+   The look being matched is Swarm / Swarm Rebuild (Joel Califa's choreography):
+   a page that wipes itself blank and is drawn back by a flock of cursors that
+   behave like designers in a multiplayer design tool, not like ballerinas.
+
+   The first version of this engine got the physics right and the *work* wrong.
+   It scheduled one step for every measured box, line and text line — hundreds
+   of them — each cursor taking whatever was nearest. The result was a swarm
+   that flew about aimlessly: a cursor would hold a text line for a fifth of a
+   second, move on, and the page assembled itself in flickers nobody watched.
+   Nothing was ever *touched*.
+
+   So the schedule is now built the way a person builds a page:
+
+     1. REGION      each cursor owns a horizontal band of the page (three
+                    columns × three rows) and stays in it. You can watch one
+                    worker finish a card instead of nine crossing the screen.
+     2. STRUCTURE   surfaces first (nav, hero, cards, rules), top to bottom.
+                    A box seeds all the text that sits inside it, so the cursor
+                    never leaves a card to type a line belonging to another one.
+     3. CONTENT     text is typed where it belongs, inside the box just drawn.
+     4. DUPLICATES  repeated siblings are one master plus copies: the cursor
+                    master-drags the ▸ ▸ ▸ marks and stamps a copy, and the copy
+                    appears at full size the instant it lands.
+     5. HAND-OFF    the last cursor closes the page, then the flock disperses and
+                    the finished site fades in underneath.
+
+   Painting follows the same rule: a box is dragged out with a crosshair and a
+   live W × H badge, text is typed glyph by glyph with a caret and a heading that
+   steps up in size, lines are drawn with a pen and a rubber band, guides slide
+   in from the rulers, and a duplicate is stamped rather than re-typed. Once a
+   piece lands it stays landed — a finished page is never un-drawn.
+
+   The camera follows the work and eases; it never cuts.
    ========================================================================== */
 
 import type { Blueprint, BoxNode, LineNode, LineText, Step } from './blueprint';
+import type { BuildSound } from './audio';
 
 /* ── cursors ─────────────────────────────────────────────────────────────── */
 
@@ -47,22 +70,37 @@ export const MUSES = [
 ];
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
 /* ── plan ────────────────────────────────────────────────────────────────── */
 
 type Planned = {
-  step: import('./blueprint').Step;
+  step: Step;
   agent: number;
   start: number;
   dur: number;
   /** travel allowance before work begins */
   travel: number;
+  /**
+   * How the work is drawn:
+   *   rect   drag a box out from its corner, then fill it
+   *   text   type glyph by glyph; `big` headings step up in size first
+   *   line   pen stroke, anchor to anchor
+   *   dup    stamp a copy of the master this step duplicates
+   */
+  draw: 'rect' | 'text' | 'line' | 'dup';
+  /** set for a duplicate: the master step it copies */
+  master?: Planned;
+  /** set for a step seeded by a box: the box it starts inside */
+  parent?: Step;
 };
 
 export type PlayOptions = {
   speed?: number;
   onProgress?: (p: number) => void;
   onDone?: () => void;
+  /** called whenever a piece of the page lands, for the HUD */
+  onLand?: (kind: 'rect' | 'text' | 'line' | 'dup') => void;
   /**
    * Hard stop in ms of real time, from the moment play() is called.
    *
@@ -75,6 +113,15 @@ export type PlayOptions = {
   hardCapMs?: number;
 };
 
+/* ── region assignment ───────────────────────────────────────────────────── */
+
+/** Three columns by three rows: which region a point belongs to. */
+function regionOf(x: number, y: number, w: number, h: number): number {
+  const col = clamp(Math.floor((x / Math.max(1, w)) * 3), 0, 2);
+  const row = clamp(Math.floor((y / Math.max(1, h)) * 3), 0, 2);
+  return row * 3 + col;
+}
+
 /* ── the engine ──────────────────────────────────────────────────────────── */
 
 export class Swarm {
@@ -82,6 +129,7 @@ export class Swarm {
   private ctx: CanvasRenderingContext2D;
   private bp: Blueprint;
   private dpr: number;
+  private sound: BuildSound | null;
 
   private agents: {
     x: number;
@@ -90,18 +138,26 @@ export class Swarm {
     vy: number;
     color: string;
     name: string;
+    /** the region of the page this cursor owns */
+    region: number;
     /** screen-space rotation of the pointer arrow, follows velocity */
     angle: number;
     /** 0..1 progress of the current step's paint */
     progress: number;
     activeIndex: number;
     typing: number;
+    /** set while the cursor is pressing the mouse */
+    pressing: boolean;
+    /** last text typed, for the key-click sound */
+    typedChars: number;
   }[] = [];
 
   private plan: Planned[] = [];
   private doneBoxes = new Set<number>();
   private doneLines = new Set<number>();
   private typingText = new Map<number, number>(); // text index -> chars drawn
+  /** text indices that are complete and must keep their full string */
+  private fullText = new Set<number>();
 
   /**
    * Scene time in ms: how far into the animation we are. Derived from real time
@@ -144,22 +200,27 @@ export class Swarm {
   private finished = false;
   /** set once every step has committed — the canvas then paints the truth */
   private complete = false;
+  private returning = false;
 
   private opts: PlayOptions = {};
 
-  /* rulers slide in at the start */
+  /* rulers slide in at the start; a guide is dragged out when text snaps */
   private rulerIn = 0;
+  private guideIn = 0;
 
-  /* intro orbit, then work, then a flock together at the end */
+  /* the blank page, then work, then a short dispersal */
   private elapsed = 0;
-  private readonly introMs = 850;
-  private readonly outroMs = 1100;
+  private readonly introMs = 900;
+  private readonly outroMs = 760;
   private outroPoint = { x: 0, y: 0 };
+  /** the page dissolving into blank, 0..1 */
+  private wipe = 0;
 
-  constructor(canvas: HTMLCanvasElement, bp: Blueprint) {
+  constructor(canvas: HTMLCanvasElement, bp: Blueprint, sound?: BuildSound) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
     this.bp = bp;
+    this.sound = sound ?? null;
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
     this.planSchedule();
     this.resetAgents();
@@ -183,56 +244,254 @@ export class Swarm {
   /* ── scheduling ──────────────────────────────────────────────────────── */
 
   private planSchedule() {
-    const steps = this.bp.steps;
+    const bp = this.bp;
 
-    /* Nine lanes. Each lane is a real person working top to bottom: a lane
-       never starts its next step until the current one is finished, so no box
-       is ever abandoned half-dragged. Lanes run in parallel with each other. */
-    const laneFree = new Array(9).fill(0); // ms
-    const lastPos = new Array(9).fill(0).map(() => ({ x: this.bp.width * 0.5, y: 200 }));
+    /* Which text belongs inside which box.
+       A cursor types the lines of the card it just drew, in reading order, and
+       never leaves to type a line on the other side of the page. That single
+       rule is most of the difference between "working" and "wandering". */
+    const textParent = new Map<number, number>(); // text index -> box index
+    const textInside = new Map<number, number[]>(); // box index -> text indices
+    const boxContainsText = (b: BoxNode) =>
+      (t: LineText) =>
+        t.x >= b.x - 6 &&
+        t.x <= b.x + b.w &&
+        t.y >= b.y - 4 &&
+        t.y + t.h <= b.y + b.h + 6;
 
-    /* The stagger is what makes it look hand-made.
-       Without it every landmark inside a band completes at the same instant and
-       the page appears to assemble itself in rows. Each step instead gets a
-       small random delay of its own, so the cursor working at the left of a
-       band finishes before the one at the right. Boxes (the landmarks) get the
-       widest spread; text the narrowest, because typing already staggers. */
-    const spreadFor = (kind: Step['kind']) =>
-      kind === 'box' ? 700 : kind === 'line' ? 480 : 420;
+    bp.texts.forEach((t, ti) => {
+      let best = -1;
+      let bestArea = Infinity;
+      bp.boxes.forEach((b, bi) => {
+        if (!boxContainsText(b)(t)) return;
+        const area = b.w * b.h;
+        if (area < bestArea) {
+          bestArea = area;
+          best = bi;
+        }
+      });
+      if (best >= 0) {
+        textParent.set(ti, best);
+        const arr = textInside.get(best) ?? [];
+        arr.push(ti);
+        textInside.set(best, arr);
+      }
+    });
 
-    for (const step of steps) {
-      // pick the lane that is free soonest and is nearest the work
-      let best = 0;
+    /* Repeated siblings become one master and copies.
+       We have no DOM siblings any more, only measured rects — so "a repeat" is
+       detected geometrically: same size, same column, evenly spaced down the
+       page. That is exactly the nav-link / card / list-row pattern the reel
+       shows being ⌥-dragged. */
+    const dupOf = new Map<number, number>(); // box index -> master box index
+    const byShape = new Map<string, number[]>();
+    bp.boxes.forEach((b, i) => {
+      const key = `${Math.round(b.w / 4)}x${Math.round(b.h / 4)}:${Math.round(b.x / 6)}`;
+      const arr = byShape.get(key) ?? [];
+      arr.push(i);
+      byShape.set(key, arr);
+    });
+    for (const [, idxs] of byShape) {
+      if (idxs.length < 3) continue;
+      const sorted = [...idxs].sort((a, b) => bp.boxes[a].y - bp.boxes[b].y);
+      const master = sorted[0];
+      for (const i of sorted.slice(1)) {
+        // never duplicate a large surface; that is a section, not a repeat
+        if (bp.boxes[i].w * bp.boxes[i].h > bp.width * 260) continue;
+        dupOf.set(i, master);
+      }
+    }
+
+    /* ── lanes ─────────────────────────────────────────────────────────────
+       Nine lanes, one per cursor. A lane never starts its next step before the
+       last one has finished, so nothing is abandoned half-dragged, and each
+       cursor is drawn toward work inside its own region. */
+    const laneFree = new Array(9).fill(0);
+    const laneRegion = new Array(9).fill(-1);
+    const lastPos = new Array(9).fill(0).map(() => ({ x: bp.width * 0.5, y: 200 }));
+
+    const bandOf = (y: number) => Math.floor(y / 220);
+
+    type Task = {
+      step: Step;
+      draw: Planned['draw'];
+      band: number;
+      /** structural tasks (a box) must come before the text inside it */
+      rank: number;
+      region: number;
+      weight: number;
+      parent?: Step;
+      master?: number;
+    };
+
+    const tasks: Task[] = [];
+
+    /* Structure: every box is a rect task, in reading order. */
+    bp.boxes.forEach((b, i) => {
+      const isDup = dupOf.has(i);
+      const masterIdx = dupOf.get(i);
+      tasks.push({
+        step: {
+          kind: 'box',
+          index: i,
+          from: { x: b.x + b.w + 140 + (i % 5) * 24, y: b.y + b.h * 0.5 },
+          to: { x: b.x, y: b.y },
+          weight:
+            1.6 +
+            Math.min(3.2, Math.sqrt(b.w * b.h) / 150) +
+            (b.role === 'image' ? 1.4 : 0) +
+            (b.role === 'card' ? 0.4 : 0),
+        },
+        draw: isDup ? 'dup' : 'rect',
+        band: bandOf(b.y),
+        rank: 0,
+        region: regionOf(b.x, b.y, bp.width, bp.height),
+        weight: 1.6 + Math.min(3.2, Math.sqrt(b.w * b.h) / 150),
+        master: masterIdx,
+      });
+    });
+
+    /* Structure: rules and lines, still before text in the same band. */
+    bp.lines.forEach((l, i) => {
+      tasks.push({
+        step: {
+          kind: 'line',
+          index: i,
+          from: { x: l.x2 + 130 + (i % 4) * 26, y: l.y1 + 30 },
+          to: { x: l.x1, y: l.y1 },
+          weight: 0.9,
+        },
+        draw: 'line',
+        band: bandOf(l.y1),
+        rank: 1,
+        region: regionOf(l.x1, l.y1, bp.width, bp.height),
+        weight: 0.9,
+      });
+    });
+
+    /* Content: text, bucketed with the box that contains it. */
+    bp.texts.forEach((t, i) => {
+      const parentBox = textParent.get(i);
+      const parentStep =
+        parentBox !== undefined
+          ? tasks.find((x) => x.step.kind === 'box' && x.step.index === parentBox)?.step
+          : undefined;
+      tasks.push({
+        step: {
+          kind: 'text',
+          index: i,
+          from: { x: t.x + t.w + 150 + (i % 6) * 20, y: t.y + t.h * 0.6 },
+          to: { x: t.x, y: t.y + t.h * 0.6 },
+          weight: 0.9 + Math.min(4, t.text.length / 16),
+        },
+        draw: 'text',
+        band: bandOf(t.y),
+        rank: 2,
+        region: regionOf(t.x, t.y, bp.width, bp.height),
+        weight: 0.9 + Math.min(4, t.text.length / 16),
+        parent: parentStep,
+      });
+    });
+
+    /* Top to bottom, structure before content. */
+    tasks.sort((a, b) => a.band - b.band || a.rank - b.rank || a.step.to.x - b.step.to.x);
+
+    for (const task of tasks) {
+      /* Pick the lane. Strong preference for the lane that already owns this
+         region, and for the lane with the least work queued — so one cursor
+         never carries the whole page while three drift. */
+      /* A step seeded by a box goes to the cursor that drew the box: it has
+         just finished it, it is standing on it, and it is the one that can type
+         the words inside it without crossing the page. */
+      const parentPlan =
+        task.parent !== undefined
+          ? this.plan.find(
+              (q) => q.step.kind === task.parent!.kind && q.step.index === task.parent!.index
+            )
+          : undefined;
+
+      let best = -1;
       let bestScore = Infinity;
       for (let a = 0; a < 9; a++) {
-        const dist = Math.hypot(lastPos[a].x - step.to.x, lastPos[a].y - step.to.y);
-        const score = laneFree[a] + Math.min(6000, dist * 3.2) + Math.random() * 260;
+        if (parentPlan && parentPlan.agent === a) {
+          best = a;
+          break;
+        }
+        const sameRegion = laneRegion[a] === task.region || laneRegion[a] === -1;
+        const dist = Math.hypot(lastPos[a].x - task.step.to.x, lastPos[a].y - task.step.to.y);
+        const score =
+          laneFree[a] +
+          Math.min(6000, dist * 2.6) +
+          (sameRegion ? 0 : 5200) +
+          (laneRegion[a] === -1 ? -2400 : 0) +
+          Math.random() * 180;
         if (score < bestScore) {
           bestScore = score;
           best = a;
         }
       }
 
-      const dist = Math.hypot(lastPos[best].x - step.to.x, lastPos[best].y - step.to.y);
+      /* A duplicate waits for its master, and text waits for the box it lives
+         in. You cannot type inside a card that has not been drawn. */
+      let earliest = laneFree[best];
+      if (parentPlan) {
+        earliest = Math.max(earliest, parentPlan.start + parentPlan.dur * 1000 + 60);
+      }
+      if (task.master !== undefined) {
+        const masterIdx = this.plan.findIndex(
+          (p) => p.step.kind === 'box' && p.step.index === task.master
+        );
+        if (masterIdx >= 0) {
+          const m = this.plan[masterIdx];
+          earliest = Math.max(earliest, m.start + m.dur * 1000 + 120);
+        }
+      }
+
+      const dist = Math.hypot(
+        lastPos[best].x - task.step.to.x,
+        lastPos[best].y - task.step.to.y
+      );
       const travel = Math.min(1.4, dist / 1100);
+      const dur =
+        task.draw === 'text'
+          ? 0.55 + task.weight * 0.11
+          : task.draw === 'dup'
+            ? 0.4
+            : 0.34 + task.weight * 0.12;
 
-      // seconds this piece of work takes; bigger things take longer
-      const dur = 0.34 + step.weight * 0.17 + travel * 0.35;
+      /* The stagger is what makes it look hand-made. Without it every landmark
+         inside a band completes at the same instant and the page appears to
+         assemble itself in rows. */
+      const spread =
+        task.draw === 'rect' ? 620 : task.draw === 'text' ? 300 : task.draw === 'dup' ? 240 : 420;
+      const start = earliest + Math.random() * spread;
 
-      // this step's own jitter, so nothing lands in lockstep
-      const stagger = Math.random() * spreadFor(step.kind);
+      laneFree[best] = start + dur * 1000 + 60;
+      if (laneRegion[best] === -1) laneRegion[best] = task.region;
+      lastPos[best] = { x: task.step.to.x, y: task.step.to.y };
 
-      const start = laneFree[best] + stagger;
-      laneFree[best] = start + dur * 1000 + 70;
-      lastPos[best] = { x: step.to.x, y: step.to.y };
-
-      this.plan.push({ step, agent: best, start, dur, travel });
+      this.plan.push({
+        step: task.step,
+        agent: best,
+        start,
+        dur,
+        travel,
+        draw: task.draw,
+        parent: task.parent,
+      });
     }
 
-    // the landmark order is also the reading order: big surfaces first within
-    // a band, so the page has a skeleton before it has sentences
+    /* Resolve duplicate → master into a real reference now every step exists. */
+    for (let i = 0; i < this.plan.length; i++) {
+      const p = this.plan[i];
+      const masterBox = p.draw === 'dup' ? dupOf.get(p.step.index) : undefined;
+      if (masterBox === undefined) continue;
+      const m = this.plan.find((q) => q.step.kind === 'box' && q.step.index === masterBox);
+      if (m) p.master = m;
+    }
+
     this.plan.sort((a, b) => a.start - b.start);
-    this.total = Math.max(...laneFree) + 900;
+    this.total = Math.max(...laneFree) + 700;
   }
 
   private resetAgents() {
@@ -248,10 +507,13 @@ export class Swarm {
         vy: 0,
         color,
         name: MUSES[i].name,
+        region: i,
         angle: 0,
         progress: 0,
         activeIndex: -1,
         typing: 0,
+        pressing: false,
+        typedChars: 0,
       };
     });
   }
@@ -300,14 +562,20 @@ export class Swarm {
     this.doneBoxes.clear();
     this.doneLines.clear();
     this.typingText.clear();
+    this.fullText.clear();
+    this.wipe = 0;
+    this.guideIn = 0;
     for (const a of this.agents) {
       a.progress = 0;
       a.activeIndex = -1;
       a.typing = 0;
+      a.pressing = false;
+      a.typedChars = 0;
     }
     this.resetAgents();
     this.camY = 0;
     this.targetCamY = 0;
+    this.sound?.dissolve();
     cancelAnimationFrame(this.raf);
     this.raf = requestAnimationFrame(this.tick);
   }
@@ -343,6 +611,7 @@ export class Swarm {
     this.finished = true;
     this.complete = true;
     this.returning = true;
+    this.wipe = 1;
     this.camY = 0;
     this.targetCamY = 0;
     this.render(true);
@@ -399,6 +668,7 @@ export class Swarm {
         this.finished = true;
         // paint the truth, then hand off
         this.render(true);
+        this.sound?.finished();
         this.opts.onDone?.();
         return;
       }
@@ -411,9 +681,10 @@ export class Swarm {
   /** figure out what each cursor should be doing right now */
   private advance(elapsed: number) {
     this.elapsed = elapsed;
-    this.rulerIn = Math.min(1, elapsed / 700);
+    this.rulerIn = Math.min(1, elapsed / 600);
+    this.wipe = Math.min(1, Math.max(0, (elapsed - 120) / 520));
 
-    /* the outro: everyone converges on the last piece of work */
+    /* the outro: the flock disperses off the finished page */
     if (elapsed >= this.total - this.outroMs) {
       const last = this.plan[this.plan.length - 1];
       this.outroPoint = last
@@ -426,6 +697,10 @@ export class Swarm {
       this.complete = true;
       this.returning = true;
     }
+
+    /* A guide is dragged out the first time a heading is typed, then stays —
+       text snapping to a shared left edge is what the reference is showing. */
+    if (this.guideIn === 0 && elapsed > this.introMs) this.guideIn = 0.0001;
 
     for (let a = 0; a < this.agents.length; a++) {
       const agent = this.agents[a];
@@ -443,6 +718,7 @@ export class Swarm {
         agent.progress = 0;
         agent.activeIndex = -1;
         agent.typing = 0;
+        agent.pressing = false;
         continue;
       }
 
@@ -451,23 +727,47 @@ export class Swarm {
       const work = Math.min(1, (elapsed - active.start) / (active.dur * 1000));
       // the first 18% is the cursor travelling; work happens after it lands
       agent.progress = Math.max(0, Math.min(1, (work - 0.18) / 0.82));
+      agent.pressing = work > 0.12 && work < 0.98;
 
-      // text draws progressively, glyph by glyph; boxes and lines commit at the end
       const st = active.step;
       if (st.kind === 'text' && agent.progress >= 0) {
         const t = this.bp.texts[st.index];
         if (t) {
           const chars = Math.ceil(t.text.length * agent.progress);
           const prev = this.typingText.get(st.index) ?? 0;
-          if (chars > prev) this.typingText.set(st.index, Math.min(t.text.length, chars));
+          if (chars > prev) {
+            this.typingText.set(st.index, Math.min(t.text.length, chars));
+            /* one key click per few glyphs, not one per frame: a real keyboard
+               is ~8 keys a second, and a click per character is a machine gun */
+            if (this.sound && chars - prev >= 2) {
+              const pan = (t.x / this.bp.width) * 2 - 1;
+              this.sound.key(pan, t.text[chars - 1] === ' ');
+            }
+          }
           // the caret only shows on the line actually being typed
           agent.typing = agent.progress < 1 ? st.index : -1;
         }
       }
 
       if (agent.progress >= 0.985) {
+        const fresh =
+          st.kind === 'box'
+            ? !this.doneBoxes.has(st.index)
+            : st.kind === 'line'
+              ? !this.doneLines.has(st.index)
+              : !this.fullText.has(st.index);
         if (st.kind === 'box') this.doneBoxes.add(st.index);
         else if (st.kind === 'line') this.doneLines.add(st.index);
+        else this.fullText.add(st.index);
+
+        if (fresh) {
+          this.opts.onLand?.(active.draw === 'rect' ? 'rect' : active.draw);
+          if (this.sound) {
+            const pan = (st.to.x / this.bp.width) * 2 - 1;
+            if (active.draw === 'dup') this.sound.press(pan);
+            this.sound.land(pan, active.step.weight);
+          }
+        }
       }
     }
   }
@@ -475,36 +775,47 @@ export class Swarm {
   /** flocking + arrival */
   private steer(dt: number) {
     const inOutro = !this.reduced && this.elapsed > this.total - this.outroMs;
+    const intro = !this.reduced && this.elapsed < this.introMs;
 
     const targetFor = (agentIndex: number) => {
       const agent = this.agents[agentIndex];
       if (inOutro) {
-        // flock to one point, stacked so they stay readable
+        // disperse upward and outward, out of the way of the page underneath
+        const spread = (agentIndex - 4) * 90;
+        const t = (this.elapsed - (this.total - this.outroMs)) / this.outroMs;
         return {
-          x: this.outroPoint.x - (agentIndex % 3) * 15,
-          y: this.outroPoint.y - Math.floor(agentIndex / 3) * 13,
+          x: this.bp.width / 2 + spread + Math.cos(agentIndex * 2.1) * 120,
+          y: this.camY - 80 - t * 60 - (agentIndex % 3) * 40,
         };
       }
-      if (!this.reduced && this.elapsed < this.introMs) {
-        // intro orbit: a slow ring around the middle of the viewport
+      if (intro) {
+        /* The page wipes blank, then the swarm fans out from the middle of the
+           viewport — the opening beat before any work starts. */
         const t = this.elapsed / 1000;
-        const a = (agentIndex / 9) * Math.PI * 2 + t * 1.5;
-        const r = 150 + Math.sin(t * 2 + agentIndex) * 22;
+        const a = (agentIndex / 9) * Math.PI * 2 + t * 1.1;
+        const r = 120 + t * 210;
         return {
           x: this.bp.width / 2 + Math.cos(a) * r,
-          y: this.camY + this.viewH * 0.42 + Math.sin(a) * r * 0.6,
+          y: this.camY + this.viewH * 0.42 + Math.sin(a) * r * 0.55,
         };
       }
       if (agent.activeIndex < 0) {
-        // idle: drift around the current camera band
+        /* Idle means waiting, not dancing: park inside the cursor's own region,
+           low in the viewport, so the page never looks like a screensaver. */
+        const p = this.plan.find((q) => q.agent === agentIndex && q.start > this.elapsed);
+        const home = p ? p.step.to : { x: (agent.region % 3) * (this.bp.width / 3), y: this.camY + this.viewH * 0.6 };
         const t = performance.now() / 1000;
         return {
-          x: this.bp.width * (0.15 + 0.7 * ((agentIndex % 3) / 2)) + Math.cos(t + agentIndex) * 90,
-          y: this.camY + this.viewH * 0.5 + Math.sin(t * 0.7 + agentIndex * 2) * 120,
+          x: home.x + Math.cos(t * 0.6 + agentIndex) * 14,
+          y: home.y + 26 + Math.sin(t * 0.5 + agentIndex * 1.7) * 10,
         };
       }
       const p = this.plan[agent.activeIndex];
-      return p.step.to;
+      /* Work is done at the moving end of the thing being drawn, not at its
+         origin: while a box is dragged out the cursor rides its bottom-right
+         corner; while text is typed it rides the caret. That is the fix for
+         "the mouse is not touching what it builds". */
+      return this.workPoint(p, this.agents[agentIndex].progress);
     };
 
     for (let i = 0; i < this.agents.length; i++) {
@@ -516,7 +827,7 @@ export class Swarm {
       const dy = target.y - a.y;
       const dist = Math.hypot(dx, dy) || 1;
       const speedCap = 1500 + dist * 2.2;
-      const gain = inOutro ? 7.5 : 4.2;
+      const gain = inOutro ? 6.5 : a.activeIndex >= 0 ? 6.2 : 3.4;
       const desired = Math.min(speedCap, dist * gain);
       let fx = (dx / dist) * desired;
       let fy = (dy / dist) * desired;
@@ -544,8 +855,8 @@ export class Swarm {
       }
       cxs /= this.agents.length;
       cys /= this.agents.length;
-      fx += (cxs - a.x) * 0.06;
-      fy += (cys - a.y) * 0.06;
+      fx += (cxs - a.x) * 0.04;
+      fy += (cys - a.y) * 0.04;
 
       const ax = fx - a.vx * 3.4;
       const ay = fy - a.vy * 3.4;
@@ -563,11 +874,38 @@ export class Swarm {
 
       const sp = Math.hypot(a.vx, a.vy);
       if (sp > 4) a.angle = Math.atan2(a.vy, a.vx) + Math.PI / 4;
+      else a.angle += (0 - a.angle) * dt * 6; // settle upright when still
     }
   }
 
+  /** Where the work physically is on this step, given 0..1 progress. */
+  private workPoint(p: Planned, progress: number): { x: number; y: number } {
+    const st = p.step;
+    if (st.kind === 'box') {
+      const b = this.bp.boxes[st.index];
+      if (!b) return st.to;
+      const g = Math.min(1, progress / 0.9);
+      /* The corner being dragged: bottom-right, from the top-left origin. The
+         hair of offset is the arrow tip resting just outside the rule rather
+         than on top of it — scaled by progress so the drag genuinely begins at
+         the origin corner and lands exactly on the far one. */
+      return { x: b.x + b.w * g + 2 * g, y: b.y + b.h * g + 2 * g };
+    }
+    if (st.kind === 'text') {
+      const t = this.bp.texts[st.index];
+      if (!t) return st.to;
+      const chars = Math.ceil(t.text.length * progress);
+      // the caret, roughly: proportional to how much is typed
+      const frac = chars / Math.max(1, t.text.length);
+      return { x: t.x + t.w * frac, y: t.y + t.h * 0.6 };
+    }
+    const l = this.bp.lines[st.index];
+    if (!l) return st.to;
+    return { x: l.x1 + (l.x2 - l.x1) * progress, y: l.y1 + (l.y2 - l.y1) * progress };
+  }
+
   private camera(elapsed: number) {
-    // the outro converges on the final piece of work — follow it there
+    // the outro disperses upward — take the camera with it
     if (elapsed > this.total - this.outroMs) {
       this.targetCamY = this.outroPoint.y - this.viewH * 0.55;
       this.returning = false;
@@ -582,34 +920,29 @@ export class Swarm {
       return;
     }
 
-    // follow the lowest active work, staying a band ahead
-    let y = 0;
-    let count = 0;
+    /* Follow the work, not the average of everyone: the cursor doing the
+       lowest thing on the page sets the camera, so the reader is always looking
+       at where the page is being written. */
+    let y = -1;
     for (const a of this.agents) {
-      if (a.activeIndex >= 0) {
-        y += this.plan[a.activeIndex].step.to.y;
-        count++;
-      }
+      if (a.activeIndex >= 0) y = Math.max(y, this.plan[a.activeIndex].step.to.y);
     }
-    if (count) {
-      const target = Math.max(0, y / count - this.viewH * 0.42);
+    if (y >= 0) {
+      const target = Math.max(0, y - this.viewH * 0.55);
       this.targetCamY = Math.min(Math.max(0, this.bp.height - this.viewH), target);
     } else {
       const p = Math.min(1, elapsed / this.total);
-      // idle: drift slowly down so the canvas does not sit frozen
       this.targetCamY = p * Math.max(0, this.bp.height - this.viewH);
     }
     this.easeCam();
   }
-
-  private returning = false;
 
   private easeCam() {
     const maxCam = Math.max(0, this.bp.height - this.viewH);
     this.targetCamY = Math.min(maxCam, Math.max(0, this.targetCamY));
 
     // ease, and snap the last few pixels so the final frame is exact
-    this.camY += (this.targetCamY - this.camY) * 0.055;
+    this.camY += (this.targetCamY - this.camY) * 0.06;
     if (Math.abs(this.targetCamY - this.camY) < 0.3) this.camY = this.targetCamY;
   }
 
@@ -633,16 +966,21 @@ export class Swarm {
     const viewTop = cam - 200;
     const viewBottom = cam + h + 200;
 
-    /* rulers */
-    if (!final) this.drawRulers(w, h, cam);
-
     const all = final || this.complete;
 
-    /* boxes
-       Culled vertically like text already was. Without this every box on a
-       six-thousand-pixel page was filled on every frame whether it was on
-       screen or not, which is the difference between a smooth build and a
-       fan spinning up on a laptop. */
+    /* The blank sheet. Before the first box lands the page is an empty canvas
+       with rulers — the moment the reel opens on. */
+    if (!final && !all && this.wipe < 1) {
+      this.drawBlank(w, h, cam);
+    }
+
+    /* guides: the red alignment rule text snaps to */
+    if (!final && !all) this.drawGuide(w, h, cam, viewTop, viewBottom);
+
+    /* rulers last, so they sit above the page edge */
+    if (!final) this.drawRulers(w, h, cam);
+
+    /* boxes */
     for (const b of bp.boxes) {
       if (!all && (b.y + b.h < viewTop || b.y > viewBottom)) continue;
       const idx = this.boxIdx.get(b)!;
@@ -652,7 +990,10 @@ export class Swarm {
         if (plans) {
           for (const p of plans) {
             const a = this.agents[p.agent];
-            if (a.progress > 0.05 && a.progress < 1) this.paintBoxDrag(ctx, b, a.progress, a);
+            if (a.progress > 0.02 && a.progress < 1) {
+              if (p.draw === 'dup' && p.master) this.paintDupDrag(ctx, b, a.progress, a, p);
+              else this.paintBoxDrag(ctx, b, a.progress, a, p.step.weight);
+            }
           }
         }
       }
@@ -668,7 +1009,11 @@ export class Swarm {
         if (plans) {
           for (const p of plans) {
             const a = this.agents[p.agent];
-            if (a.progress > 0.1 && a.progress < 1) this.paintLine(ctx, l, a.progress);
+            if (a.progress > 0.05 && a.progress < 1) {
+              this.paintLine(ctx, l, a.progress);
+              // the pen: anchor dots at each end, rubber band to the cursor
+              this.paintPen(ctx, l, a.progress, a.x, a.y);
+            }
           }
         }
       }
@@ -682,13 +1027,18 @@ export class Swarm {
       }
       if (all) {
         this.paintText(ctx, t, t.text.length, false);
+      } else if (this.fullText.has(i)) {
+        this.paintText(ctx, t, t.text.length, false);
       } else {
         const chars = this.typingText.get(i);
         if (chars && chars > 0) {
           const blinking =
             this.agents.some((a) => a.typing === i) &&
             Math.floor(performance.now() / 420) % 2 === 0;
-          this.paintText(ctx, t, chars, blinking);
+          // a heading steps up in size as it is typed
+          const p = this.plan.find((q) => q.step.kind === 'text' && q.step.index === i);
+          const prog = p ? this.agents[p.agent].progress : 1;
+          this.paintText(ctx, t, chars, blinking, t.size > 28 ? 0.55 + 0.45 * prog : 1);
         }
       }
     }
@@ -698,11 +1048,11 @@ export class Swarm {
     /* cursors */
     if (!final) {
       const outro = Math.max(0, (this.elapsed - (this.total - this.outroMs)) / this.outroMs);
-      const fade = 1 - Math.min(1, Math.max(0, (outro - 0.62) / 0.38));
+      const fade = 1 - Math.min(1, Math.max(0, (outro - 0.55) / 0.45));
       if (fade > 0.01) {
         for (const a of this.agents) {
           ctx.globalAlpha = fade;
-          this.paintCursor(ctx, a.x, a.y - cam, a.color, a.angle);
+          this.paintCursor(ctx, a.x, a.y - cam, a.color, a.angle, a.pressing);
           if (a.activeIndex >= 0 && outro < 0.2) {
             this.paintLabel(ctx, a.x, a.y - cam, a.name, a.color);
           }
@@ -710,6 +1060,72 @@ export class Swarm {
         ctx.globalAlpha = 1;
       }
     }
+  }
+
+  /** the blank sheet: page colour, a faint grid, nothing else */
+  private drawBlank(w: number, h: number, cam: number) {
+    const ctx = this.ctx;
+    const a = this.wipe;
+    if (a <= 0) return;
+    const bp = this.bp;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, a);
+    ctx.fillStyle = bp.background;
+    ctx.fillRect(0, 0, w, h);
+
+    /* a 24px drafting grid, barely there — it is what makes the empty canvas
+       read as a canvas rather than a white rectangle */
+    ctx.strokeStyle = withAlpha(bp.ink, 0.06);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const g = 24;
+    const ox = 0;
+    const oy = -cam % g;
+    for (let x = ox; x < w; x += g) {
+      ctx.moveTo(Math.round(x) + 0.5, 0);
+      ctx.lineTo(Math.round(x) + 0.5, h);
+    }
+    for (let y = oy; y < h; y += g) {
+      ctx.moveTo(0, Math.round(y) + 0.5);
+      ctx.lineTo(w, Math.round(y) + 0.5);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** a red alignment guide with its measured position */
+  private drawGuide(w: number, h: number, cam: number, top: number, bottom: number) {
+    if (this.guideIn <= 0) return;
+    const ctx = this.ctx;
+    // pull the first heading's left edge out of the blueprint
+    const firstBig = this.bp.texts.find((t) => t.size > 24) ?? this.bp.texts[0];
+    if (!firstBig) return;
+    const x = Math.round(firstBig.x) + 0.5;
+    if (x < 0 || x > w) return;
+
+    const t = Math.min(1, (this.elapsed - this.introMs) / 700);
+    ctx.save();
+    ctx.globalAlpha = 0.9 * t;
+    ctx.strokeStyle = 'rgba(224, 72, 58, 0.85)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(x, Math.max(0, firstBig.y - cam - 1));
+    ctx.lineTo(x, Math.min(h, (bottom - top) + 0));
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // the little flag with the value, at the top of the guide
+    const label = `${Math.round(firstBig.x)}`;
+    ctx.font = '500 9px ui-monospace, SFMono-Regular, Menlo, monospace';
+    const lw = ctx.measureText(label).width + 10;
+    ctx.fillStyle = 'rgba(224, 72, 58, 0.92)';
+    roundRect(ctx, x + 3, Math.max(22, firstBig.y - cam), lw, 13, 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + 8, Math.max(22, firstBig.y - cam) + 7);
+    ctx.restore();
   }
 
   private paintBox(ctx: CanvasRenderingContext2D, b: BoxNode, p: number) {
@@ -744,38 +1160,114 @@ export class Swarm {
     }
   }
 
+  /**
+   * A box being dragged out. The reference draws the rectangle from its corner
+   * with a crosshair and a live size badge; the fill only arrives at the end, so
+   * you watch the shape being made rather than a block fading in.
+   */
   private paintBoxDrag(
     ctx: CanvasRenderingContext2D,
     b: BoxNode,
     p: number,
-    agent: { color: string }
+    agent: { color: string },
+    weight: number
   ) {
-    // grow the rectangle from its top-left, drag-style
     const g = Math.min(1, p / 0.86);
     const w = b.w * g;
     const h = b.h * g;
 
     ctx.save();
-    ctx.strokeStyle = agent.color;
-    ctx.lineWidth = 1.25;
-    ctx.setLineDash([4, 3]);
-    ctx.strokeRect(b.x + 0.5, b.y + 0.5, w, h);
+    // the placeholder the page will occupy, ghosted
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = 'rgba(120,120,128,0.55)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w, b.h);
     ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
 
-    // corner crosshairs
-    ctx.globalAlpha = 0.9;
+    // the live drag
+    ctx.strokeStyle = 'rgba(60,60,72,0.9)';
+    ctx.lineWidth = 1.25;
+    ctx.strokeRect(b.x + 0.5, b.y + 0.5, w, h);
+
+    // crosshair at the moving corner — this is what the cursor is holding
+    const cx = b.x + w;
+    const cy = b.y + h;
+    ctx.strokeStyle = agent.color;
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(b.x - 4, b.y + 0.5);
-    ctx.lineTo(b.x + 7, b.y + 0.5);
-    ctx.moveTo(b.x + 0.5, b.y - 4);
-    ctx.lineTo(b.x + 0.5, b.y + 7);
+    ctx.moveTo(cx - 7, cy + 0.5);
+    ctx.lineTo(cx + 7, cy + 0.5);
+    ctx.moveTo(cx + 0.5, cy - 7);
+    ctx.lineTo(cx + 0.5, cy + 7);
     ctx.stroke();
     ctx.restore();
 
-    // live W × H badge
-    if (g > 0.02 && g < 0.995) {
+    // the size badge, following the corner
+    if (g > 0.02) {
       const label = `${Math.round(w)} × ${Math.round(h)}`;
-      this.badge(ctx, b.x + w + 8, b.y + h - 6, label, agent.color);
+      this.badge(ctx, cx + 9, cy - 6, label, agent.color, weight);
+    }
+  }
+
+  /** ⌥-drag: the master is copied, and the copy lands at full size */
+  private paintDupDrag(
+    ctx: CanvasRenderingContext2D,
+    b: BoxNode,
+    p: number,
+    agent: { color: string; x: number; y: number },
+    plan: Planned
+  ) {
+    const g = Math.min(1, p / 0.8);
+    const m = plan.master ? this.bp.boxes[plan.master.step.index] : null;
+
+    // from the master to the copy: a rubber band and a ghost outline
+    ctx.save();
+    if (m) {
+      ctx.strokeStyle = 'rgba(224, 72, 58, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(m.x + m.w / 2, m.y + m.h / 2);
+      ctx.lineTo(b.x + b.w / 2, b.y + b.h / 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // the ghost of the thing being stamped
+    ctx.globalAlpha = 0.5 * g;
+    ctx.strokeStyle = agent.color;
+    ctx.lineWidth = 1.25;
+    roundRect(ctx, b.x + 0.5, b.y + 0.5, b.w, b.h, b.radius);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    if (g > 0.05) {
+      /* red spacing marks: the gap between the master and this copy, which is
+         the detail that makes a duplicate read as ⌥-drag rather than "pop in" */
+      if (m) {
+        const gap = Math.round(Math.abs(b.y - (m.y + m.h)));
+        if (gap > 2) {
+          const gx = b.x + b.w + 12;
+          const y1 = Math.min(m.y + m.h, b.y);
+          const y2 = Math.max(m.y + m.h, b.y);
+          ctx.save();
+          ctx.strokeStyle = 'rgba(224, 72, 58, 0.9)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(gx + 0.5, y1);
+          ctx.lineTo(gx + 0.5, y2);
+          ctx.moveTo(gx - 3, y1 + 0.5);
+          ctx.lineTo(gx + 4, y1 + 0.5);
+          ctx.moveTo(gx - 3, y2 + 0.5);
+          ctx.lineTo(gx + 4, y2 + 0.5);
+          ctx.stroke();
+          ctx.restore();
+          this.badge(ctx, gx + 6, (y1 + y2) / 2 + 7, `${gap}`, 'rgba(224,72,58,0.95)', 1);
+        }
+      }
+      this.badge(ctx, b.x + b.w + 9, b.y + b.h - 4, 'copy', agent.color, 1);
     }
   }
 
@@ -790,25 +1282,59 @@ export class Swarm {
     ctx.stroke();
   }
 
+  /** pen tool: anchor at the start, a rubber band out to the cursor */
+  private paintPen(
+    ctx: CanvasRenderingContext2D,
+    l: LineNode,
+    p: number,
+    cx: number,
+    cy: number
+  ) {
+    const x2 = l.x1 + (l.x2 - l.x1) * p;
+    const y2 = l.y1 + (l.y2 - l.y1) * p;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(60,60,72,0.45)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 3]);
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(cx, cy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // anchors
+    for (const [ax, ay] of [
+      [l.x1, l.y1],
+      [x2, y2],
+    ]) {
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = 'rgba(60,60,72,0.9)';
+      ctx.fillRect(ax - 2.5, ay - 2.5, 5, 5);
+      ctx.strokeRect(ax - 2.5, ay - 2.5, 5, 5);
+    }
+    ctx.restore();
+  }
+
   private paintText(
     ctx: CanvasRenderingContext2D,
     t: LineText,
     chars: number,
-    caret: boolean
+    caret: boolean,
+    scale = 1
   ) {
     const text = chars >= t.text.length ? t.text : t.text.slice(0, chars);
-    ctx.font = `${t.weight} ${t.size}px ${t.font}`;
+    const size = t.size * scale;
+    ctx.font = `${t.weight} ${size}px ${t.font}`;
     ctx.fillStyle = t.color;
     ctx.textBaseline = 'alphabetic';
 
-    const baseY = t.y + t.h * 0.78;
+    const baseY = t.y + t.h * 0.78 + (t.size - size) * 0.2;
     ctx.fillText(text, t.x, baseY);
 
     if (caret) {
       const wpx = ctx.measureText(text).width;
       ctx.fillStyle = t.color;
       ctx.globalAlpha = 0.7;
-      ctx.fillRect(t.x + wpx + 1.5, t.y + t.h * 0.14, Math.max(1, t.size * 0.055), t.h * 0.76);
+      ctx.fillRect(t.x + wpx + 1.5, t.y + t.h * 0.14, Math.max(1, size * 0.055), t.h * 0.76);
       ctx.globalAlpha = 1;
     }
   }
@@ -818,11 +1344,20 @@ export class Swarm {
     x: number,
     y: number,
     color: string,
-    angle: number
+    angle: number,
+    pressing = false
   ) {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
+    // the click: a ring that grows out from the tip while the mouse is down
+    if (pressing) {
+      ctx.beginPath();
+      ctx.arc(0, 0, 9, 0, Math.PI * 2);
+      ctx.strokeStyle = withAlpha(color, 0.35);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
     // a hand-drawn arrow, not a system cursor
     ctx.beginPath();
     ctx.moveTo(0, 0);
@@ -865,18 +1400,20 @@ export class Swarm {
     x: number,
     y: number,
     label: string,
-    color: string
+    color: string,
+    weight: number
   ) {
-    ctx.font = '500 10px ui-monospace, SFMono-Regular, Menlo, monospace';
-    const w = ctx.measureText(label).width + 10;
+    ctx.font = '500 9px ui-monospace, SFMono-Regular, Menlo, monospace';
+    const w = ctx.measureText(label).width + 9;
+    void weight;
     ctx.fillStyle = color;
     ctx.globalAlpha = 0.95;
-    roundRect(ctx, x, y - 14, w, 14, 2);
+    roundRect(ctx, x, y - 13, w, 13, 2);
     ctx.fill();
     ctx.globalAlpha = 1;
     ctx.fillStyle = 'rgba(255,255,255,0.98)';
     ctx.textBaseline = 'middle';
-    ctx.fillText(label, x + 5, y - 7);
+    ctx.fillText(label, x + 4.5, y - 6.5);
   }
 
   private drawRulers(w: number, h: number, cam: number) {
@@ -968,6 +1505,12 @@ function withAlpha(color: string, a: number): string {
   if (m) {
     const parts = m[1].split(',').map((s) => s.trim());
     return `rgba(${parts[0]},${parts[1]},${parts[2]},${a})`;
+  }
+  // #rrggbb
+  const h = color.match(/^#([0-9a-f]{6})$/i);
+  if (h) {
+    const n = parseInt(h[1], 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
   }
   return color;
 }

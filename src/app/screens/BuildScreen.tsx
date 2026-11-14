@@ -5,6 +5,7 @@ import { buildSite, GeminiError, BUDGET_MS, type MuseReport } from '../../lib/ge
 import { renderDocument } from '../../lib/render';
 import { snapshotHtml } from '../../lib/blueprint';
 import { Swarm } from '../../lib/swarm';
+import { BuildSound } from '../../lib/audio';
 import { StageClock } from '../StageClock';
 import { armDeadline, clearDeadline } from '../../lib/deadline';
 import { THEMES } from '../../lib/themes';
@@ -77,6 +78,14 @@ export default function BuildScreen() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const swarmRef = useRef<Swarm | null>(null);
+  /* The reel this build is modelled on has sound: a key click per glyph, a
+     press for every mouse-down, and a glass-piano note when a piece lands. It
+     is synthesized here, never loaded. Off by default, because an app that
+     makes noise the first time you open it is a bad guest — the HUD says
+     "Sound" until you ask for it. */
+  const soundRef = useRef<BuildSound | null>(null);
+  const [soundOn, setSoundOn] = useState(false);
+  const [soundLocked, setSoundLocked] = useState(false);
 
   const [phase, setPhase] = useState<Phase>('writing');
   const [note, setNote] = useState('Reading what you wrote');
@@ -266,7 +275,7 @@ export default function BuildScreen() {
         const canvas = canvasRef.current;
         if (!canvas) return;
 
-        const swarm = new Swarm(canvas, bp);
+        const swarm = new Swarm(canvas, bp, soundRef.current ?? undefined);
         swarmRef.current = swarm;
         swarm.resize();
 
@@ -351,6 +360,8 @@ export default function BuildScreen() {
       if (ranFor.current === runId) ranFor.current = null;
       swarmRef.current?.stop();
       swarmRef.current = null;
+      soundRef.current?.dispose();
+      soundRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
@@ -363,6 +374,23 @@ export default function BuildScreen() {
     if (paused) s.resume();
     else s.pause();
     setPaused(!paused);
+  }
+
+  /**
+   * Browsers hold audio until a gesture. We ask on the first click and, if the
+   * context is still suspended, say so in the button instead of pretending.
+   */
+  async function toggleSound() {
+    if (soundOn) {
+      soundRef.current?.setMuted(true);
+      setSoundOn(false);
+      return;
+    }
+    if (!soundRef.current) soundRef.current = new BuildSound();
+    const ok = await soundRef.current.start();
+    soundRef.current.setMuted(!ok);
+    setSoundOn(ok);
+    setSoundLocked(!ok);
   }
 
   function changeSpeed(v: number) {
@@ -499,6 +527,9 @@ export default function BuildScreen() {
           <div className="div" />
           <button onClick={togglePause} aria-pressed={paused}>
             {paused ? 'Resume' : 'Pause'}
+          </button>
+          <button onClick={toggleSound} aria-pressed={soundOn}>
+            {soundLocked ? 'Tap for sound' : soundOn ? 'Sound on' : 'Sound'}
           </button>
           <div className="div" />
           <button className="go" onClick={skip} disabled={!working && live}>
