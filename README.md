@@ -14,12 +14,20 @@
 
 ---
 
+> A local website builder that draws. **No account, no backend, no server** —
+> bring your own Gemini key, answer six questions, watch nine cursors build the page,
+> then keep the HTML. Everything in one 80-second budget.
+
 A spinner is a lie you watch for thirty seconds. This is the same thirty seconds,
 with nine cursors on it: a crosshair drags out a box and a `W × H` badge tracks the
 mouse, a headline gets typed a character at a time behind a blinking caret, three
 product cards are stamped into copies with red spacing marks, a pen draws the rules.
 Then the cursors scatter and the page they built fades in underneath — interactive,
 editable, and yours.
+
+**If it is useful, the two things that help most:** [star the repo](https://github.com/mafk21/swarmcraft)
+so other people find it, and [open an issue](https://github.com/mafk21/swarmcraft/issues/new)
+when a build does something stupid — the failure cases above were all found that way.
 
 <!--
   The hero used to be docs/media/mid-build.gif — a real capture of a build, made
