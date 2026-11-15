@@ -62,3 +62,35 @@ for publishing it.
 
 Real screenshots only. A mocked-up "what it looks like" on a project whose whole pitch
 is that it really does this is worse than no image at all.
+
+---
+
+# Story cards
+
+`npm run card` renders **1080×1920** PNGs from `scripts/lib/story-cards.mjs`, for
+posting to an Instagram or WhatsApp story:
+
+```bash
+npm run card              # both cards
+npm run card -- launch    # just one
+npm run card -- --check   # check fonts and names, render nothing
+```
+
+| file | what it says |
+|---|---|
+| `docs/media/story-launch.png` | what the thing is: the claim, a drawing of a page mid-build, three proofs, the repo URL |
+| `docs/media/story-guarantee.png` | the rule: the model never writes CSS |
+
+Why a card and not a screenshot: a story is read in one second, on a phone, by
+someone who did not ask for it. A screenshot of a desktop app shrinks to nothing
+there. The card is a poster — one claim, one drawing, one instruction — built from
+the same tokens the app uses (`src/styles/tokens.css`), the same three bundled
+typefaces, and the nine real cursor colours doing the drawing.
+
+The drawing is vector, so it stays sharp at any size. It is deliberately *not* a
+mock screenshot of the product: it is an illustration of the moment, and it is
+labelled as one — if you want the product itself, that is `npm run shots`.
+
+If the copy needs changing, change it in `scripts/lib/story-cards.mjs`; a test
+fails on emoji and on the usual marketing words, so the card cannot slip into the
+register the product is against.
