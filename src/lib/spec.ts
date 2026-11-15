@@ -804,6 +804,63 @@ function dedupeLinks<T extends { label: string; href: string }>(links: T[]): T[]
   });
 }
 
+/**
+ * Give a generated multi-page response its nav.
+ *
+ * The model writes pages as a list, and links between them as `page:N`. It
+ * cannot know the final order, because an invalid page is dropped and the rest
+ * move up — so a link to `page:3` would then point at the wrong thing. This
+ * renumbers by title, and adds the links the reader needs: a way home from
+ * every page, and a link to each page from home.
+ *
+ * Deliberately conservative: links the model already had are kept as they are
+ * if they still resolve, so a site with a considered nav does not get a
+ * mechanical one bolted on top.
+ */
+export function wireNav(pages: SiteSpec[]): SiteSpec[] {
+  if (pages.length < 2) return pages;
+
+  const indexByTitle = new Map<string, number>();
+  pages.forEach((p, i) => {
+    if (i > 0 && !indexByTitle.has(p.meta.title)) indexByTitle.set(p.meta.title, i);
+  });
+
+  /* A link to a page that no longer exists is dropped, not pointed at the top
+     of the current page: the reader asked for a page, and a silent jump looks
+     like a broken link either way, but a dropped one can be counted. */
+  const alive = (href: string): boolean => {
+    const m = href.match(/^page:(\d+)$/);
+    return !m || Number(m[1]) < pages.length;
+  };
+
+  return pages.map((p, i) => {
+    const links = p.nav.links
+      .filter((l) => alive(l.href))
+      .filter((l) => !(i > 0 && l.href === `page:${i}`)); // no self-link
+
+    /* home links to every page it does not already link to */
+    if (i === 0) {
+      for (let n = 1; n < pages.length; n++) {
+        if (links.some((l) => l.href === `page:${n}`)) continue;
+        links.push({ label: pages[n].meta.title, href: `page:${n}` });
+      }
+    } else if (!links.some((l) => l.href === 'page:0')) {
+      /* every page can get home; without this the nav is a one-way street */
+      links.unshift({ label: 'Home', href: 'page:0' });
+    }
+
+    /* de-duplicate by target, keeping the label the model chose first */
+    const seen = new Set<string>();
+    const kept = links.filter((l) => {
+      if (seen.has(l.href)) return false;
+      seen.add(l.href);
+      return true;
+    });
+
+    return { ...p, nav: { ...p.nav, links: kept } };
+  });
+}
+
 /** A blank page in the same voice and theme as the home page. */
 export function newPage(from: SiteSpec, title: string): SiteSpec {
   /* The sections a new page starts with, held in a variable because the nav

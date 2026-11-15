@@ -13,7 +13,7 @@ import { SITE_KINDS } from './spec';
 import type { Section } from './spec';
 import type { SiteSpec } from './spec';
 import { KIND_BRIEFS } from './questions';
-import { validateSpec, findSlop, isInventedTestimonial } from './spec';
+import { validateSpec, findSlop, isInventedTestimonial, wireNav } from './spec';
 
 /**
  * Models to try, best first.
@@ -172,6 +172,7 @@ Exact keys, exact spelling:
             "accent": one of "slate"|"oxblood"|"forest"|"ink"|"sand"|"clay",
             "themeReason": string },
   "nav": { "brand": string, "links": [{ "label": string, "href": string }] },
+  "pages": [ page, ... 0 to 3 of them ],   // OPTIONAL: see SUB-PAGES below
   "sections": [ section, ... 3 to 9 of them ],
   "footer": { "note": string },
   "voice": { "register": string, "facts": [string] }
@@ -199,6 +200,23 @@ A section is one of these, and "type" must be exactly one of these strings:
     "days": [{ "day": string, "items": [{ "time": string, "title": string }, 1-10] }, 1-7] }
 
 Omit an optional key entirely rather than sending null. Use no other keys.
+
+── SUB-PAGES ────────────────────────────────────────────────────────────────
+A one-page site is usually the right answer. Return "pages" ONLY when the brief
+clearly needs separate pages: a shop with a catalogue too long for one page, a
+restaurant with a menu and a booking page, a consultancy with services and case
+studies, docs with a reference separate from the guide. Never return pages to
+look thorough. Never split a page that reads fine whole.
+
+A page has exactly the same shape as the object above minus "pages" — its own
+"meta", "nav", "sections", "footer", "voice" — and at most 3 of them, each with
+3 to 6 sections. They share the home page's theme and accent: set meta.theme and
+meta.accent to the same values, and give each page its own title and description.
+
+Links between pages use the href "page:N", where N is the index in YOUR pages
+array: the home page is page:0, so the first page you add is page:1. The home
+nav should link to each page, and each page's nav should link home with
+"page:0". Anchors ("#faq") still work inside a page. Do not invent other URLs.
 `;
 
 /** What each kind's page should actually be made of, in order. */
@@ -857,7 +875,7 @@ export async function buildSpec(
   answers: AnswerMap,
   signal?: AbortSignal,
   deadline = Infinity
-): Promise<{ spec: SiteSpec; repairs: string[] }> {
+): Promise<{ spec: SiteSpec; pages: SiteSpec[]; repairs: string[] }> {
   const raw = await call(
     key,
     {
@@ -878,6 +896,10 @@ export async function buildSpec(
     deadline
   );
 
+  /* Sub-pages are validated exactly like the home page — one schema, one set of
+     rules — then renumbered. A page that fails is dropped rather than shipped
+     half-formed, and the home page's links are rewired afterwards so `page:3`
+     cannot point at a page that is no longer there. */
   const result = validateSpec(raw);
 
   if (!result.ok) {
@@ -888,7 +910,52 @@ export async function buildSpec(
     );
   }
 
-  return { spec: result.spec, repairs: result.repairs };
+  return {
+    spec: result.spec,
+    pages: subPages(raw, result.spec, result.repairs),
+    repairs: result.repairs,
+  };
+}
+
+/**
+ * Pull the optional `pages` array out of the model's response.
+ *
+ * Deliberately forgiving: this is an optional extra, so anything wrong with it
+ * costs the sub-pages and never the home page. Each page is validated by the
+ * same function the home page went through, which is what stops a sub-page
+ * smuggling in a key the spec has no room for.
+ */
+function subPages(raw: unknown, home: SiteSpec, repairs: string[]): SiteSpec[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const list = (raw as { pages?: unknown }).pages;
+  if (!Array.isArray(list) || list.length === 0) return [];
+
+  const out: SiteSpec[] = [];
+  for (const candidate of list) {
+    if (out.length >= 3) break;
+    /* Junk is skipped rather than counted: truncating the array first meant a
+       stray null early in the list used up one of the three slots and cost a
+       real page at the end. */
+    if (!candidate || typeof candidate !== 'object') continue;
+    /* The model is told to repeat the theme; if it drifts, the home page's
+       choice wins, so a site does not arrive in three different costumes. */
+    const seed = candidate as { meta?: Record<string, unknown>; nav?: Record<string, unknown> };
+    const seeded = {
+      ...seed,
+      meta: { ...(seed.meta ?? {}), theme: home.meta.theme, accent: home.meta.accent },
+      /* the brand is the site's name, so home decides it, not each page */
+      nav: { ...(seed.nav ?? {}), brand: home.nav.brand },
+    };
+    /* A page whose title collides with home is not a separate page. */
+    const v = validateSpec(seeded);
+    if (!v.ok) {
+      repairs.push('dropped a sub-page that did not fit the shape');
+      continue;
+    }
+    if (out.some((p) => p.meta.title === v.spec.meta.title)) continue;
+    out.push(v.spec);
+  }
+  return out;
 }
 
 /* ============================================================================
@@ -1040,7 +1107,13 @@ export function calliope(spec: SiteSpec, wanted: string[]): Revised {
 
 export { GeminiError };
 
-export type BuiltSite = { spec: SiteSpec; reports: MuseReport[]; repairs: string[] };
+export type BuiltSite = {
+  spec: SiteSpec;
+  /** the pages after home, in nav order. Home is `spec` itself. */
+  pages: SiteSpec[];
+  reports: MuseReport[];
+  repairs: string[];
+};
 
 /**
  * The full generation — ONE model call.
@@ -1077,7 +1150,7 @@ export async function buildSite(
   };
 
   opts.onStage?.('Writing the page');
-  const { spec, repairs } = await buildSpec(
+  const { spec, pages, repairs } = await buildSpec(
     key,
     kind,
     answers,
@@ -1107,5 +1180,19 @@ export async function buildSite(
   current = a11y.spec;
   record(a11y.reports[0]);
 
-  return { spec: current, reports, repairs };
+  /* Sub-pages get the same free structural passes as home. The muses were
+     written about "the page"; running them per page would produce a report the
+     HUD could not attribute, so they are folded silently — the user already has
+     the home page's report, and an invented testimonial must not survive on
+     page 3 just because it was not on page 1. Same-rules means same-rules. */
+  const cleaned = pages.map((p) => polyhymnia(calliope(p, []).spec).spec);
+
+  /* The model cannot know the final order — it wrote `page:N` against an array
+     that loses any page failing validation — so the links are rebuilt here, by
+     title, once the real list exists. Without this the home nav could promise a
+     page that is not in the site, which is the dead-link bug the schema check
+     already refuses for anchors. */
+  const wired = wireNav([current, ...cleaned]);
+
+  return { spec: wired[0], pages: wired.slice(1), reports, repairs };
 }

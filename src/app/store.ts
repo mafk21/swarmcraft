@@ -52,6 +52,8 @@ type S = {
   accent: string | null;
 
   spec: SiteSpec | null;
+  /** the pages after home, in order. Home is `spec` itself. */
+  pages: SiteSpec[];
   blueprint: Blueprint | null;
 
   /** the saved project being edited, if any */
@@ -97,6 +99,7 @@ const initial = {
   theme: null,
   accent: null,
   spec: null,
+  pages: [] as SiteSpec[],
   blueprint: null,
   projectId: null,
   saved: false,
@@ -192,3 +195,12 @@ export const useApp = create<S>((set, get) => ({
       runId: get().runId + 1,
     }),
 }));
+
+/* The store, reachable from the browser console and from the e2e walk.
+   This app has no server and no secrets beyond the key the user typed (which
+   is not in here), so the whole state being inspectable is a feature: a support
+   question ("what does it say it is doing?") is answered in one line instead of
+   a screenshot. Nothing in the app reads it back. */
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).__ARENA_STORE__ = useApp;
+}

@@ -43,6 +43,8 @@ export type PageRow = {
   title: string;
   /** anchor id, used in hrefs */
   slug: string;
+  /** position in the site, 1-based. Home is 0 and lives on the project row. */
+  order?: number;
   spec: SiteSpec;
   created: number;
 };

@@ -17,10 +17,11 @@
      projects/<id>.json       one file per site, the whole spec
      pages/<id>.json          extra pages belonging to a site
 
-   Images stay in memory for the session. They are data URLs that can be
-   megabytes each, and quietly copying megabytes into someone's folder is a
-   bigger decision than this fallback should make on their behalf — the export
-   already inlines them into the HTML file, so nothing is lost from the site.
+   Images are written as real files too: media/<id>.<ext>, one file per picture,
+   with the row that describes them in media/index.json. That was the last thing
+   the folder lost — a site reopened the next morning kept its text and had empty
+   picture boxes — and a folder the user already chose for their work is exactly
+   where their pictures belong.
 
    Everything here is written against the standard handle interface, and the
    directory is injectable (`folderApi(dir)`) so the test suite can prove the
@@ -121,16 +122,62 @@ export function folderApi(root: DirHandleLike): StoreApi {
     return root.getDirectoryHandle(store, { create: true });
   };
 
-  /* media: names are unique per row, and the map is the session's copy */
-  const memory = new Map<string, StoreRow>();
+  /* ── media ────────────────────────────────────────────────────────────────
+     A picture is a data URL in a row. Written as JSON alone it would bloat
+     index.json by megabytes per upload, so the bytes go in their own file and
+     the index keeps the metadata. `data` is re-attached on read, so the rest of
+     the app never learns the difference. */
+
+  const MEDIA_DIR = 'media';
+  const MEDIA_INDEX = 'index.json';
+
+  /** The extension for a mime type, defaulting to png rather than guessing. */
+  const extOf = (type: string) => {
+    const m = /^image\/(png|jpeg|jpg|webp|gif|svg\+xml|avif)$/i.exec(type || '');
+    if (!m) return 'png';
+    const t = m[1].toLowerCase();
+    return t === 'jpeg' ? 'jpg' : t === 'svg+xml' ? 'svg' : t;
+  };
+
+  const readMediaIndex = async (): Promise<Record<string, StoreRow>> => {
+    try {
+      const dir = await root.getDirectoryHandle(MEDIA_DIR, { create: true });
+      const raw = await readJson(dir, MEDIA_INDEX);
+      if (!raw) return {};
+      const out: Record<string, StoreRow> = {};
+      for (const [k, v] of Object.entries(raw)) {
+        if (v && typeof v === 'object' && !Array.isArray(v)) out[k] = v as StoreRow;
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  };
+
+  /**
+   * Read a picture back, putting `data` on the row.
+   *
+   * A row whose file has been deleted from the folder keeps its metadata and
+   * loses `data`. The app then renders the drawn placeholder it already draws
+   * for a missing picture, which is honest — better than a broken image and
+   * better than pretending the upload worked.
+   */
+  const hydrate = async (dir: DirHandleLike, row: StoreRow): Promise<StoreRow> => {
+    const file = String(row.file ?? '');
+    if (!file) return row;
+    try {
+      const fh = await dir.getFileHandle(file);
+      const text = await (await fh.getFile()).text();
+      return text ? { ...row, data: text } : row;
+    } catch {
+      return row;
+    }
+  };
 
   /** settings.json is one object of name → row, so two settings coexist. */
   const readSettings = async (): Promise<Record<string, StoreRow>> => {
     const raw = await readJson(root, SETTINGS);
     if (!raw) return {};
-    /* A file written by an older build, or hand-edited, might not be a map of
-       rows. Anything that is not an object of objects is treated as empty
-       rather than crashing the app on boot. */
     const out: Record<string, StoreRow> = {};
     for (const [k, v] of Object.entries(raw)) {
       if (v && typeof v === 'object' && !Array.isArray(v)) out[k] = v as StoreRow;
@@ -153,7 +200,13 @@ export function folderApi(root: DirHandleLike): StoreApi {
 
   return {
     async get(store, key) {
-      if (store === 'media') return memory.get(key);
+      if (store === 'media') {
+        const index = await readMediaIndex();
+        const row = index[key];
+        if (!row) return undefined;
+        const dir = await root.getDirectoryHandle(MEDIA_DIR, { create: true });
+        return hydrate(dir, row);
+      }
       if (store === 'settings') return (await readSettings())[key];
       const dir = await dirFor(store);
       if (!dir) return undefined;
@@ -163,7 +216,25 @@ export function folderApi(root: DirHandleLike): StoreApi {
     async put(store, row) {
       if (store === 'media') {
         const id = String(row.id ?? '');
-        if (id) memory.set(id, row);
+        if (!id) throw new Error('A picture needs an id.');
+        const dir = await root.getDirectoryHandle(MEDIA_DIR, { create: true });
+        const data = String(row.data ?? '');
+        const file = `${safe(id)}.${extOf(String(row.type ?? ''))}`;
+
+        /* base64 in one text write: FileSystemWritableFileStream accepts text,
+           and a data URL is already text. No binary conversion, no dependency. */
+        if (data) {
+          const fh = await dir.getFileHandle(file, { create: true });
+          const w = await fh.createWritable();
+          await w.write(data);
+          await w.close();
+        }
+
+        /* the index keeps everything EXCEPT the bytes */
+        const index = await readMediaIndex();
+        const { data: _omit, ...meta } = row;
+        index[id] = { ...meta, id, file };
+        await writeJson(dir, MEDIA_INDEX, index);
         return id;
       }
       if (store === 'settings') {
@@ -184,7 +255,18 @@ export function folderApi(root: DirHandleLike): StoreApi {
 
     async delete(store, key) {
       if (store === 'media') {
-        memory.delete(key);
+        const index = await readMediaIndex();
+        const row = index[key];
+        const dir = await root.getDirectoryHandle(MEDIA_DIR, { create: true });
+        if (row?.file) {
+          try {
+            await dir.removeEntry(String(row.file));
+          } catch {
+            /* the file was already gone: the outcome the caller wanted */
+          }
+        }
+        delete index[key];
+        await writeJson(dir, MEDIA_INDEX, index);
         return;
       }
       if (store === 'settings') {
@@ -203,7 +285,12 @@ export function folderApi(root: DirHandleLike): StoreApi {
     },
 
     async getAll(store) {
-      if (store === 'media') return [...memory.values()];
+      if (store === 'media') {
+        const index = await readMediaIndex();
+        const dir = await root.getDirectoryHandle(MEDIA_DIR, { create: true });
+        const rows = await Promise.all(Object.values(index).map((r) => hydrate(dir, r)));
+        return rows;
+      }
       return listRows(store);
     },
 

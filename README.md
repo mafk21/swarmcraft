@@ -76,8 +76,12 @@ forget it later from the same screen.
 **3 · Build something**
 
 Pick a kind → write the brief → tick your sections → choose type and colour → **Build
-my page**. The page saves itself into **Your sites**; open it to edit, or **Export
-HTML** for one file you own.
+my page**. The site saves itself into **Your sites**; open it to edit, or **Export
+HTML** for files you own.
+
+One build can return more than one page — a shop with its catalogue on its own page,
+a restaurant with a menu and a booking page. The home page links to them and each page
+links home; the pages are saved with the site, so reopening it brings all of them back.
 
 <details>
 <summary><b>On Windows, or if something does not start</b></summary>
@@ -138,7 +142,8 @@ it is the page's own geometry, re-enacted.
 
 |  |  |
 |---|---|
-| **A page, not a promise** | Rendered, measured, drawn, then handed over as a real document you can click. |
+| **Pages, not a promise** | Rendered, measured, drawn, then handed over as real documents you can click — one page, or a site of linked ones. |
+| **Your pictures stay put** | Uploaded images are written as files in your own folder, with a JSON index beside them. A deleted file degrades to the drawn placeholder, not a broken image. |
 | **Copy that only knows what you said** | Every fact comes from your brief or your PDF. A deterministic pass strips invented testimonials, prices and claims before you ever see them. |
 | **An editor that means it** | Every field in the inspector is a real input writing back to the same spec the page was rendered from. |
 | **One file you own** | Export opens in any browser. No CDN, no runtime, no build step, no account. |
@@ -246,6 +251,7 @@ Details in [docs/media/README.md](docs/media/README.md).
 |---|---|
 | [`src/lib/spec.ts`](src/lib/spec.ts) | **Start here.** The contract everything else follows from. |
 | [`src/lib/blueprint.ts`](src/lib/blueprint.ts) | A rendered page, taken apart into something drawable. |
+| [`src/lib/pages.ts`](src/lib/pages.ts) | A site's pages after home: where they are stored, and how `page:N` links are wired. |
 | [`src/lib/swarm.ts`](src/lib/swarm.ts) | The engine: regions, drags, typing, copies, flocking, camera. |
 | [`src/lib/gemini.ts`](src/lib/gemini.ts) | The model calls, the fallback ladder, the deadline. |
 | [HANDOFF.md](HANDOFF.md) | State, decisions, known gaps. |

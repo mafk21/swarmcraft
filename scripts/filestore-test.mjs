@@ -204,14 +204,54 @@ function makeDisk() {
   ok('stray and broken files are skipped, not thrown', all.length === 1 && all[0].name === 'a', JSON.stringify(all));
 }
 
-/* ── 6. media is session-only, and says so by working in memory ──────────── */
+/* ── 6. pictures survive a reopen, as real files ───────────────────────────
+   This used to assert the opposite. Images were memory-only, so a site reopened
+   the next morning kept its text and had empty picture boxes — the last thing
+   the folder lost. They are files now, and the JSON index holds only metadata,
+   because a data URL in index.json would be megabytes per upload. */
 
 {
   const disk = makeDisk();
   const store = folderApi(disk.root);
-  await store.put('media', { id: 'm1', data: 'data:image/png;base64,AAA' });
-  ok('media is readable in the session', (await store.get('media', 'm1'))?.id === 'm1');
-  ok('media is not written to disk', ![...disk.files.keys()].some((p) => p.includes('m1')));
+  const data = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==';
+  await store.put('media', { id: 'm1', name: 'kiln.png', type: 'image/png', data, bytes: 42 });
+
+  ok('the picture file is written', disk.files.has('/root/media/m1.png'), [...disk.files.keys()].filter((p) => p.startsWith('/root/media')).join(' '));
+
+  /* the file is the data URL itself, so it can be opened by hand or renamed */
+  ok('the file holds the image', disk.files.get('/root/media/m1.png') === data);
+
+  /* metadata is in the index, and the BYTES ARE NOT */
+  const index = JSON.parse(disk.files.get('/root/media/index.json') ?? '{}');
+  ok('the index knows the picture', !!index.m1 && index.m1.name === 'kiln.png', JSON.stringify(index.m1));
+  ok('the index does not carry the bytes', !String(disk.files.get('/root/media/index.json')).includes('iVBORw0KGgo'), 'index.json is holding the image data');
+  ok('the index points at the file', index.m1?.file === 'm1.png', String(index.m1?.file));
+
+  /* a NEW store over the same folder: this is the next morning */
+  const reopened = folderApi(disk.root);
+  const row = await reopened.get('media', 'm1');
+  ok('the picture survives a reopen', row?.data === data, row ? 'present but different' : 'missing');
+  ok('the metadata survives too', row?.name === 'kiln.png' && row?.type === 'image/png');
+
+  ok('the picture is listed', (await reopened.getAll('media')).length === 1);
+
+  /* the extension follows the type, so a jpeg is not saved as a .png */
+  await reopened.put('media', { id: 'm2', name: 'a.jpg', type: 'image/jpeg', data: 'data:image/jpeg;base64,/9j/4AAQ' });
+  ok('a jpeg gets a .jpg file', disk.files.has('/root/media/m2.jpg'), [...disk.files.keys()].join(' '));
+
+  /* deleting removes the file AND the index entry, leaving nothing behind */
+  await reopened.delete('media', 'm1');
+  ok('deleting a picture removes its file', !disk.files.has('/root/media/m1.png'));
+  const after = JSON.parse(disk.files.get('/root/media/index.json') ?? '{}');
+  ok('deleting a picture removes its index entry', !after.m1);
+  ok('the other picture is untouched', !!after.m2);
+
+  /* a picture whose file was deleted by hand still lists, with no data: the app
+     then draws its placeholder rather than a broken image */
+  disk.files.delete('/root/media/m2.jpg');
+  const orphan = await folderApi(disk.root).get('media', 'm2');
+  ok('a picture with a missing file still reads as a row', orphan?.name === 'a.jpg');
+  ok('a picture with a missing file has no data', orphan?.data === undefined, String(orphan?.data));
 }
 
 /* ── 7. the app does not promise a folder it cannot have ─────────────────── */
