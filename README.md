@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/media/wordmark.svg" alt="Swarmsmith — website builder" height="72">
+<img src="docs/media/wordmark.svg" alt="Swarmsmith — website builder" height="120">
 
 **Write a brief. Nine cursors draw your website. Keep the HTML.**
 
