@@ -97,7 +97,7 @@ function connectionFailure(key: string, what: string): GeminiError {
   const authKey = key.trim().startsWith('AQ.');
   if (authKey) {
     return new GeminiError(
-      `${what} This browser could not read Google's reply. That usually means the request was refused before it was answered, and the most common cause with a new-style AQ. key is the key being restricted or the API not being enabled on its project. The key itself looks well formed.`,
+      `${what} ${AQ_HINT}`,
       0
     );
   }
@@ -105,6 +105,94 @@ function connectionFailure(key: string, what: string): GeminiError {
     `${what} Check your connection, and check that the key was copied in full — Google gives no reply at all when the key is rejected at the network edge.`,
     0
   );
+}
+
+/**
+ * What an unreachable Google actually means for an `AQ.` key.
+ *
+ * The old copy said "the key being restricted or the API not being enabled",
+ * which is the most common cause in a terminal and the LEAST likely one in this
+ * app: the app sends the key in `x-goog-api-key`, which is the method `AQ.`
+ * keys need, and a key restriction produces a 403 the app can read, not a
+ * network failure. What it cannot read is a request stopped in between — and
+ * that is by far the most common cause in a browser: an adblocker, a privacy
+ * extension or a corporate/VPN proxy that eats the CORS preflight.
+ *
+ * Two more things are worth naming, because they are real and a user cannot
+ * guess them: Google has a known server-side fault where correctly configured
+ * `AQ.` keys return `401 ACCESS_TOKEN_TYPE_UNSUPPORTED`, and this app is opened
+ * from a `localhost` origin, which some proxies refuse. `diagnose()` separates
+ * all of these by probing; this string is what is said when the probe also
+ * cannot get through.
+ */
+const AQ_HINT =
+  "Google's reply never reached this page, so the key itself was not necessarily the problem. Most often something between the browser and Google is blocking the request — an adblocker, a privacy extension, a VPN or a work proxy. Two things worth ruling out: try it in a private window with extensions off, and open the app at http://localhost:5173 rather than a 127.0.0.1 or file:// address, since some proxies refuse those origins.";
+
+/**
+ * Find out WHAT could not be reached, rather than guessing.
+ *
+ * A `fetch` that throws is opaque: a CORS rejection, a blocked preflight, a
+ * dead network and a DNS failure all arrive as the same `TypeError`. But they
+ * are separable by experiment, and a diagnostic that says "try this" is worth
+ * far more than one that says "check your key":
+ *
+ *   · a plain GET to Google's model list with NO custom headers is a "simple
+ *     request". If that succeeds while the real call does not, the network is
+ *     fine and the failure is in the preflighted path — which points straight
+ *     at an extension or proxy, not at the key.
+ *   · a preflighted OPTIONS probe to the real endpoint separates "this host is
+ *     blocked" from "this host is fine".
+ *   · if even the simple request fails, the browser has no route to Google.
+ *
+ * Returns a sentence naming what was actually observed. It never claims to know
+ * why; it reports which of the three doors was shut.
+ */
+export async function diagnose(key: string, signal?: AbortSignal): Promise<string> {
+  const timed = async (ms: number, fn: (s: AbortSignal) => Promise<unknown>) => {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), ms);
+    const onAbort = () => ctl.abort();
+    signal?.addEventListener('abort', onAbort);
+    try {
+      await fn(ctl.signal);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(t);
+      signal?.removeEventListener('abort', onAbort);
+    }
+  };
+
+  /* 1. Is there any route to Google at all? No headers, so no preflight. */
+  const simple = await timed(8000, (s) =>
+    fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key.trim())}`, {
+      method: 'GET',
+      signal: s,
+    })
+  );
+
+  /* 2. Does the real, preflighted path open? */
+  const preflight = await timed(8000, (s) =>
+    fetch(ENDPOINT(liveModel ?? MODELS[0]), {
+      method: 'POST',
+      headers: headersFor(key),
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }], generationConfig: { maxOutputTokens: 4 } }),
+      signal: s,
+    })
+  );
+
+  if (!simple && !preflight) {
+    return "This browser could not open a connection to Google at all — not even a plain request with no headers. That is your network, a VPN, or a proxy on this machine, not the key.";
+  }
+  if (simple && !preflight) {
+    return "Google answered a plain request but not this one. That is the signature of an adblocker, privacy extension or proxy that is stripping the request headers — the key never reached Google. Try a private window with extensions disabled, then the build again.";
+  }
+  if (!simple && preflight) {
+    return "The API endpoint is reachable but a plain request is not, which usually means a proxy is filtering by URL. The build itself may still work — press Build again.";
+  }
+  /* Both reachable: the failure was not the network. */
+  return "Google is reachable from this browser, so the key or the project behind it is being refused. Check, in AI Studio, that the key is not restricted to another API and that the Gemini API is enabled on its project.";
 }
 
 /**
@@ -765,7 +853,12 @@ async function call(
 export async function testKey(
   key: string,
   signal?: AbortSignal
-): Promise<{ ok: boolean; message: string }> {
+): Promise<{
+  ok: boolean;
+  message: string;
+  /** true only when nothing reached Google, so no status was ever seen */
+  unreachable?: boolean;
+}> {
   const ctl = new AbortController();
   const onAbort = () => ctl.abort();
   signal?.addEventListener('abort', onAbort, { once: true });
@@ -794,7 +887,13 @@ export async function testKey(
           signal: ctl.signal,
         });
       } catch {
-        return { ok: false, message: connectionFailure(key, 'Google could not be reached.').message };
+        /* `unreachable` is what lets the screen run the probe below instead of
+           showing a guess. A 401/403 is a different animal: Google answered. */
+        return {
+          ok: false,
+          unreachable: true,
+          message: connectionFailure(key, 'Google could not be reached.').message,
+        };
       }
 
       if (res.ok) {

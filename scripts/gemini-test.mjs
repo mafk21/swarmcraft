@@ -515,10 +515,57 @@ assert.match(down.message, /could not be reached|Could not reach Google/i);
 reset(); respond = () => ({ throw: new TypeError('offline') });
 const downAuth = await g.testKey('AQ.Ab8Xk2nQ9wBiA_TESTKEY_123456789');
 assert.equal(downAuth.ok, false);
-assert.match(downAuth.message, /AQ\.|restricted|not being enabled|well formed/i,
+assert.match(downAuth.message, /AQ\.|key|blocking the request/i,
   'an AQ. key that cannot reach Google must be told what that actually implies');
 assert.notEqual(downAuth.message, down.message,
   'the two key formats must not get identical advice for the same failure');
+
+/* The old AQ. advice led with "the key is restricted or the API is not
+   enabled", which is the common cause in a terminal and the wrong lead here:
+   this app sends the key in x-goog-api-key, the method AQ. keys need, and a
+   restricted key answers 403 — a status the app CAN read. What it cannot read is
+   a request stopped in between, which in a browser is the usual cause. */
+assert.ok(!/most common cause[^.]*restricted/i.test(downAuth.message),
+  'the first thing an AQ. user is told must not be the least likely cause');
+assert.match(downAuth.message, /adblock|extension|proxy|VPN/i,
+  'and it must name the things that actually block a browser request');
+
+/* ── 7a. the probe says WHICH door was shut, not just that one was ────────
+   A thrown fetch cannot distinguish a CORS rejection from a dead network. The
+   probe can, by trying both paths, so the user is sent to fix the thing that is
+   actually wrong. Each of the four outcomes is pinned here. */
+
+const probe = async (simpleFails, preflightFails) => {
+  reset();
+  respond = (url) =>
+    url.includes('/models?')
+      ? simpleFails
+        ? { throw: new TypeError('blocked') }
+        : ok('{}')()
+      : preflightFails
+        ? { throw: new TypeError('blocked') }
+        : ok('{}')();
+  return g.diagnose('AQ.Ab8Xk2nQ9wBiA_TESTKEY_123456789');
+};
+
+{
+  const none = await probe(true, true);
+  assert.match(none, /network|VPN|proxy/i, 'both doors shut is a network problem');
+  assert.ok(!/regenerate/i.test(none), 'and must not send them to make a new key');
+
+  const extension = await probe(false, true);
+  assert.match(extension, /adblock|extension|proxy/i,
+    'simple request works, preflighted does not: something is stripping headers');
+  assert.match(extension, /private window/i, 'and it must say what to try');
+
+  const filtered = await probe(true, false);
+  assert.match(filtered, /proxy|URL/i);
+
+  const reachable = await probe(false, false);
+  assert.match(reachable, /restricted|enabled/i,
+    'if Google is reachable, the key or project really is the answer');
+}
+
 
 /* ── 7b. invented reviews are removed, because they are false claims ──────
    The model was asked for a coffee roastery, and nobody had left a review. It
