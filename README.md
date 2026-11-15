@@ -1,6 +1,6 @@
 <div align="center">
 
-# SWARMSMITH
+<img src="docs/media/wordmark.svg" alt="Swarmsmith — website builder" height="72">
 
 **Write a brief. Nine cursors draw your website. Keep the HTML.**
 
@@ -195,10 +195,14 @@ without ever touching what they built.
 <summary><b>Every image in this README is generated, not mocked</b></summary>
 
 ```bash
-npm run shots                 # drives the Chrome or Edge you already have
-npm run shots -- --headed     # watch it happen
+npm run shots                 # the in-app screenshots, via the Chrome you already have
+npm run card                  # 1080×1920 story cards and the poster
+npm run logo                  # the mark, the wordmark, the favicon
 npm run shots -- --check      # verify the plumbing, capture nothing
 ```
+
+Each one is real output from a script in this repo, committed as-is. Nothing
+here was drawn in an image editor, and nothing is a placeholder.
 
 It builds the app, serves it locally, answers the single Gemini request with a canned
 spec (no key, no quota), clicks through the real screens and writes the GIF and two

@@ -11,7 +11,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { renderCardSvg, wrap, measure, CARDS, CARD_NAMES, CARD_W, CARD_H, CARD_FONTS, CARD_FONT_DIRS } from './lib/story-cards.mjs';
+import { renderCardSvg, wrap, measure, CARDS, CARD_NAMES, CARD_RENDERERS, CARD_W, CARD_H, CARD_FONTS, CARD_FONT_DIRS } from './lib/story-cards.mjs';
 
 let fail = 0;
 const ok = (name, cond, detail = '') => {
@@ -86,10 +86,12 @@ for (const [key, file] of Object.entries(CARD_FONTS)) {
 
 /* ── the names the CLI accepts ────────────────────────────────────────────── */
 
-ok('every card has a description', Object.keys(CARD_NAMES).every((k) => k in CARDS && CARD_NAMES[k].length > 10));
-ok('every card is in the CLI map', Object.keys(CARDS).every((k) => k in CARD_NAMES));
+ok('every renderable name has a description', Object.keys(CARD_NAMES).every((k) => CARD_NAMES[k].length > 10));
+ok('every copy card is in the CLI map', Object.keys(CARDS).every((k) => k in CARD_NAMES));
+ok('every renderable name has a renderer', Object.keys(CARD_NAMES).every((k) => typeof CARD_RENDERERS[k] === 'function'));
+ok('the poster has its own composition', CARD_RENDERERS.poster().includes('Your website'));
 ok('card names are filename-safe', Object.keys(CARDS).every((k) => /^[a-z][a-z-]*$/.test(k)));
-ok('two cards', Object.keys(CARDS).length === 2);
+ok('two copy cards and a poster', Object.keys(CARDS).length === 2 && 'poster' in CARD_NAMES);
 
 /* wrap() is what keeps text on the card; it has to be right on its own. */
 ok('wrap keeps every line inside the width', wrap('the quick brown fox jumps over the lazy dog again and again', 30, 300, 'sans').every((l) => measure(l, 30, 'sans') <= 300));

@@ -100,6 +100,14 @@ export const CARDS = {
 export const CARD_NAMES = {
   launch: 'the main story — what it is, in one look',
   guarantee: 'the rule — the model never writes CSS',
+  poster: 'the story poster — one claim, one sheet of paper, no bullet points',
+};
+
+/** Names `npm run card` renders, and which renderer each one uses. */
+export const CARD_RENDERERS = {
+  launch: () => renderCardSvg(CARDS.launch),
+  guarantee: () => renderCardSvg(CARDS.guarantee),
+  poster: () => renderPosterSvg(),
 };
 
 /* ── text measurement ────────────────────────────────────────────────────────
@@ -123,14 +131,25 @@ function charW(ch, face) {
   return base;
 }
 
-export function measure(text, size, face = 'sans') {
+/** The raw per-character estimate. Right to a few percent, both ways. */
+export function advance(text, size, face = 'sans') {
   let w = 0;
   for (const ch of String(text)) w += charW(ch, face) * size;
-  /* Per-character arithmetic cannot know about kerning or the real advance
-     widths, and it was under-measuring by about 6% — enough for a line to run
-     off the card. The factor is a fudge, and it is a fudge in the safe
-     direction: lines wrap early rather than overflow. */
-  return w * 1.06;
+  return w;
+}
+
+/**
+ * The estimate used for wrapping and for anything that must not overflow.
+ *
+ * Per-character arithmetic cannot know about kerning or real advance widths, and
+ * the raw version under-measured enough for a line to run off the card. The
+ * factor is a fudge, in the safe direction: lines wrap early rather than
+ * overflow. Placement (a caret after a word, an underline) uses `advance`
+ * instead, because there a 6% pad puts the caret in the wrong place — which is
+ * exactly how it looked on the poster.
+ */
+export function measure(text, size, face = 'sans') {
+  return advance(text, size, face) * 1.06;
 }
 
 /** Greedy wrap to `maxWidth` px. Always returns at least one line. */
@@ -353,6 +372,103 @@ export function renderCardSvg(spec = CARDS.launch) {
 </svg>`;
 }
 
+
+/* ── the poster ──────────────────────────────────────────────────────────────
+   Different job from the launch card. That one explains; this one has to stop a
+   thumb.
+
+   So: no explanation, no three proofs in a row, no bullet list — those are the
+   shapes that read as generated. One enormous line of type, one sheet of paper
+   with a corner still being dragged, and the swarm's own cursors on it. The
+   claim is the picture; the picture is the product.
+
+   Everything is placed from the sheet's geometry rather than centred by eye,
+   because a poster that is off by four pixels looks like a mistake and a poster
+   that is composed looks deliberate. */
+
+export function renderPosterSvg() {
+  const SHEET = { x: 76, y: 806, w: 928, h: 660 };
+  const inner = SHEET.x + 44;
+
+  /* Nine cursors, each on a corner or an edge of the sheet, each pointing at
+     what it is about to touch. Positions are fractions of the sheet, so the
+     drawing survives being resized. */
+  const on = (fx, fy, i, size = 40) =>
+    cursor(SHEET.x + SHEET.w * fx, SHEET.y + SHEET.h * fy, i, size);
+
+  const sheet = `
+  <g>
+    <rect x="${SHEET.x}" y="${SHEET.y}" width="${SHEET.w}" height="${SHEET.h}" rx="8" fill="${S1}" stroke="${L2}"/>
+    <!-- the top bar of the page, measured -->
+    <path d="M${SHEET.x + 8} ${SHEET.y} h${SHEET.w - 16} a8 8 0 0 1 8 8 v26 h-${SHEET.w} v-26 a8 8 0 0 1 8-8 z" fill="${S2}"/>
+    <line x1="${SHEET.x}" y1="${SHEET.y + 34}" x2="${SHEET.x + SHEET.w}" y2="${SHEET.y + 34}" stroke="${L1}"/>
+    <circle cx="${inner}" cy="${SHEET.y + 17}" r="4.5" fill="${L3}"/>
+    <circle cx="${inner + 17}" cy="${SHEET.y + 17}" r="4.5" fill="${L3}"/>
+    <text x="${inner + 40}" y="${SHEET.y + 22}" font-family="JetBrains Mono" font-size="17" fill="${T2}">falconroasters.sa</text>
+
+    <!-- the headline: the one thing this poster says twice -->
+    <text x="${inner}" y="${SHEET.y + 146}" font-family="Instrument Serif" font-size="66" fill="${T0}">Roasted on Tuesday,</text>
+    <text x="${inner}" y="${SHEET.y + 218}" font-family="Instrument Serif" font-size="66" fill="${T0}">in your cup by Thursday</text>
+    <rect x="${inner + advance('in your cup by Thursday', 66, 'serif') + 7}" y="${SHEET.y + 168}" width="4" height="58" fill="${MARK_ACCENT}"/>
+
+    <line x1="${inner}" y1="${SHEET.y + 264}" x2="${SHEET.x + SHEET.w - 44}" y2="${SHEET.y + 264}" stroke="${L1}"/>
+
+    <!-- three product rows, drawn as measured rules, not as cards -->
+    ${[0, 1, 2]
+      .map((i) => {
+        const y = SHEET.y + 306 + i * 74;
+        return `
+    <text x="${inner}" y="${y}" font-family="Instrument Sans" font-size="26" fill="${T1}">${['Espresso Roast', 'Filter Roast', 'Filter Papers'][i]}</text>
+    <text x="${SHEET.x + SHEET.w - 44}" y="${y}" text-anchor="end" font-family="JetBrains Mono" font-size="24" fill="${T2}">${['SAR 65', 'SAR 70', 'SAR 12'][i]}</text>
+    <line x1="${inner}" y1="${y + 22}" x2="${SHEET.x + SHEET.w - 44}" y2="${y + 22}" stroke="${L1}" opacity="0.7"/>`;
+      })
+      .join('')}
+
+    <!-- the corner that is not finished, and the handle that is dragging it -->
+    <path d="M${SHEET.x + SHEET.w - 132} ${SHEET.y + SHEET.h} h${104}" stroke="${MARK_ACCENT}" stroke-width="3" stroke-linecap="round"/>
+    <rect x="${SHEET.x + SHEET.w - 34}" y="${SHEET.y + SHEET.h - 6}" width="12" height="12" fill="${MARK_ACCENT}"/>
+    <rect x="${SHEET.x + SHEET.w - 150}" y="${SHEET.y + SHEET.h - 34}" width="92" height="26" rx="3" fill="${S3}" stroke="${L3}"/>
+    <text x="${SHEET.x + SHEET.w - 104}" y="${SHEET.y + SHEET.h - 16}" text-anchor="middle" font-family="JetBrains Mono" font-size="15" fill="${T1}">928 × 660</text>
+
+    ${on(0.99, 0.99, 0, 44)}
+    ${on(0.50, 0.80, 1)}
+    ${on(0.78, 0.42, 2)}
+    ${on(0.72, 0.29, 3)}
+    ${on(0.06, 0.56, 4)}
+    ${on(0.42, 0.63, 5)}
+    ${on(0.94, 0.62, 6)}
+    ${on(0.3, 0.88, 7)}
+    ${on(0.68, 0.84, 8)}
+  </g>`;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${CARD_W}" height="${CARD_H}" viewBox="0 0 ${CARD_W} ${CARD_H}">
+  <defs>
+    <pattern id="graticule" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0 H0 V32" fill="none" stroke="#f5f3ef" stroke-opacity="0.022" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="${CARD_W}" height="${CARD_H}" fill="${S0}"/>
+  <rect width="${CARD_W}" height="${CARD_H}" fill="url(#graticule)"/>
+
+  <text x="76" y="188" font-family="JetBrains Mono" font-size="22" letter-spacing="6" fill="${T2}">SWARMSMITH</text>
+  <line x1="76" y1="216" x2="1004" y2="216" stroke="${L2}"/>
+
+  <text x="72" y="404" font-family="Instrument Serif" font-size="176" fill="${T0}">Your website,</text>
+  <text x="72" y="576" font-family="Instrument Serif" font-size="176" fill="${T0}">drawn</text>
+  <text x="72" y="748" font-family="Instrument Serif" font-size="176" font-style="italic" fill="${ACC}">in front of you.</text>
+
+  ${sheet}
+
+  <line x1="76" y1="1600" x2="1004" y2="1600" stroke="${L2}"/>
+  <text x="76" y="1664" font-family="JetBrains Mono" font-size="29" fill="${T0}">github.com/mafk21/swarm-builder</text>
+  <text x="1004" y="1664" text-anchor="end" font-family="JetBrains Mono" font-size="21" fill="${T2}">link in bio</text>
+  <text x="76" y="1718" font-family="JetBrains Mono" font-size="18" letter-spacing="4" fill="${T3}">NINE CURSORS · ONE REQUEST · 80 SECONDS</text>
+  <text x="1004" y="1718" text-anchor="end" font-family="JetBrains Mono" font-size="18" letter-spacing="4" fill="${T3}">MIT</text>
+</svg>`;
+}
+
 /** The `<style>`-free part of the palette the tests want to assert on. */
 export const CARD_ACCENT = ACC;
+export const MARK_ACCENT = '#5b8cff';
 export const CURSOR_COLOURS = CURSORS;
