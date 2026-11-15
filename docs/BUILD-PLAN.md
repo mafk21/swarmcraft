@@ -723,6 +723,6 @@ All three can be answered while Phase 0 runs.
 
 ## Appendix — supporting research
 
-- [`chrome-extension-field-guide.md`](./chrome-extension-field-guide.md) — kept for reference on MV3 internals (much of it no longer applies now that this is a local app; see §4.4).
+- [`chrome-extension-field-guide.md`](chrome-extension-field-guide.md) — kept for reference on MV3 internals (much of it no longer applies now that this is a local app; see §4.4).
 - Reference product: **Swarm Rebuild** (`DhvanilPatel/swarm-cursors`), motion design by **Joel Califa** (`califa/swarm-site`).
 - Gemini API: `POST /v1beta/models/{model}:generateContent` and `:streamGenerateContent?alt=sse`.

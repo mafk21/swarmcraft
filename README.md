@@ -21,9 +21,17 @@ product cards are stamped into copies with red spacing marks, a pen draws the ru
 Then the cursors scatter and the page they built fades in underneath — interactive,
 editable, and yours.
 
-<!-- `npm run shots` writes docs/media/mid-build.gif. Until it is committed, GitHub
-     renders the alt text instead of a broken frame. See docs/media/README.md. -->
-![Nine cursors drawing a coffee roastery page: a hero dragged out with a W×H badge, a headline typed behind a caret, product cards stamped into copies](docs/media/mid-build.gif)
+<!--
+  The hero used to be docs/media/mid-build.gif — a real capture of a build, made
+  by `npm run shots` on a machine with Chrome. It was never produced, and a
+  missing image on the first screen of a public repo is worse than no image, so
+  the poster stands in: also real output of a script in this repo (`npm run card`),
+  also 1080×1920, and honest about being a drawing rather than a recording.
+
+  When the GIF exists, put it back here — one line, and the alt text is already
+  written in docs/media/README.md.
+-->
+<img src="docs/media/story-poster.png" width="420" alt="A story poster: 'Your website, drawn in front of you' above a page being dragged out of a box by nine cursors.">
 
 ## Quick start
 
