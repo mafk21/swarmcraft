@@ -20,9 +20,11 @@
 
 export const MARK_ACCENT = '#5b8cff';
 
-/* Reused from the card renderer: both need to know how wide a string is before
-   anything is drawn, and there is no reason for two estimates. */
-import { advance } from './story-cards.mjs';
+/* Both the wordmark and the cards need to know how wide a string is before
+   anything is drawn, so the estimate lives in measure.mjs. Importing it from
+   story-cards.mjs made a cycle, because story-cards.mjs draws its link preview
+   with this very function. */
+import { advance } from './measure.mjs';
 
 /** A cursor arrow pointing down-right, tip at (0,0), drawn for a 6-unit box. */
 const ARROW = 'M0 0 L0 5.6 L1.45 4.2 L2.45 6.4 L3.6 5.85 L2.6 3.75 L4.6 3.5 Z';

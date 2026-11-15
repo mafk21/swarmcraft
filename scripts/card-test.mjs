@@ -9,6 +9,8 @@
  * public thing this repo produces and the easiest to get subtly wrong.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
 
@@ -109,6 +111,32 @@ for (const [name, card] of Object.entries(CARDS)) {
     ok(`${name}: does not say the old name`, !/swarmsmith/i.test(svg), 'a renamed product is being drawn under its old name');
   }
   ok('the poster says the current name', CARD_RENDERERS.poster().includes(`>${BRAND}<`));
+}
+
+/* ── no import cycles between the drawing modules ──────────────────────────
+   This is the bug that took CI down and passed locally. story-cards.mjs began
+   importing the wordmark from logo.mjs, while logo.mjs imported its text
+   measurement from story-cards.mjs. Whether that crashed depended on which
+   module happened to load first, and the two tests imported them in different
+   orders — so it was green here and red there.
+
+   Each module is now loaded on its own, in a fresh process, because a shared
+   import cache hides exactly this class of bug. */
+{
+  const dir = fileURLToPath(new URL('./lib/', import.meta.url));
+  for (const mod of ['measure.mjs', 'logo.mjs', 'story-cards.mjs']) {
+    const r = spawnSync(process.execPath, ['-e', `import(${JSON.stringify(new URL(mod, 'file://' + dir).href)}).then(()=>process.exit(0))`], {
+      encoding: 'utf8',
+    });
+    ok(`${mod}: loads on its own`, r.status === 0, (r.stderr || '').split('\n').filter(Boolean)[0] ?? '');
+  }
+  /* and in the order that used to fail: the wordmark first */
+  const r = spawnSync(
+    process.execPath,
+    ['-e', `import(${JSON.stringify(new URL('logo.mjs', 'file://' + dir).href)}).then(()=>import(${JSON.stringify(new URL('story-cards.mjs', 'file://' + dir).href)})).then(()=>process.exit(0))`],
+    { encoding: 'utf8' }
+  );
+  ok('logo then cards: the wordmark still builds', r.status === 0, (r.stderr || '').split('\n').filter(Boolean)[0] ?? '');
 }
 
 /* ── the social preview ──────────────────────────────────────────────────────
