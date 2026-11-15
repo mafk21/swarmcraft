@@ -230,6 +230,21 @@ pausing freezes it and changing speed changes the rate without jumping.
 | `src/lib/samples.ts` | the hand-written demo spec |
 | `src/styles/tokens.css` | design system: monochrome chrome, nine cursor colours |
 | `src/app/` | the funnel: store, shell, seven screens |
+| `scripts/shots.mjs` | drives Chrome to capture the README images from a real run |
+| `scripts/lib/shots-kit.mjs` | the browserless half of it: demo spec, browser lookup, static server, GIF encoder |
+
+## The README images
+
+`npm run shots` builds the app, serves `dist/` with a stub for the one Gemini
+request, and drives a real Chrome through the real screens to capture
+`docs/media/mid-build.gif`, `finished.png` and `inspector.png`. It needs a browser
+installed (yours) and nothing else — no key, no quota, no network.
+
+`scripts/shots-test.mjs` covers everything in it that does not need a browser: the
+demo spec against the real schema, the stub's response shape, the browser lookup on
+every OS, the static server's traversal guard, and the GIF's header, loop block and
+frame delay. The browser half is proven only by running it, which is why it exits `2`
+with the paths it tried rather than writing a placeholder when there is no Chrome.
 
 ## Known gaps, in priority order
 

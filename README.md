@@ -1,150 +1,125 @@
-# swarmsmith
+# Swarmsmith
 
-**Describe a website. Watch nine cursors build it. Keep the file.**
+**Write a brief. Nine cursors draw your website. Keep the HTML.**
 
-A local app that builds you a real, working website. Pick what kind of site it is,
-write the brief in one box (optionally attach a PDF and its text is used too),
-choose the sections and a type system — then nine cursors draw the page in front of
-you: crosshair-dragged boxes with live `W × H` badges, headlines typed with a caret,
-ruled lines, ruler guides, repeated cards stamped out as copies. The finished
-interactive site fades in underneath, and you export it as plain HTML you own.
+Swarmsmith is a website builder that runs on your machine. You describe the site
+you want in plain words, it composes a page, and then — instead of a spinner — you
+watch a swarm of cursors actually build it: boxes dragged out with `W × H` badges,
+headlines typed with a caret, repeated cards stamped into copies. The finished page
+is interactive, editable, and exports as one `index.html` file you own.
+
+No account. No server. No browser extension. Your own Gemini key, stored in your
+own browser.
+
+<picture>
+  <img src="docs/media/mid-build.gif" width="880" alt="Nine cursors drawing a coffee roastery page: a hero dragged out, a headline typed, product cards copied.">
+</picture>
+
+```bash
+git clone https://github.com/mafk21/swarm-builder.git && cd swarm-builder
+npm install
+npm run dev                    # → http://localhost:5173
+```
+
+Node 22.12 or newer. Then paste a free key from
+[aistudio.google.com/apikey](https://aistudio.google.com/apikey) into the first
+screen and build. The app checks the key by asking it to write something, so a key
+that cannot build a page is caught before your first build, not during it.
+
+## What you get
+
+- **A real page, not a canvas full of talking.** The cursors do not mime building.
+  The page is rendered first, measured in a hidden iframe, taken apart into boxes,
+  lines and text runs, and then re-drawn from that measurement — which is why the
+  text lands where the text goes and the reveal underneath is the same page.
+- **Copy that only knows what you told it.** Every fact on the page comes from your
+  brief or your PDF. There is a deterministic pass that removes invented
+  testimonials, prices and claims.
+- **You can edit everything after it is built.** Every field in the inspector is a
+  real input writing to the same spec the page was rendered from.
+- **Export opens in any browser.** One file, no network, no build step, no CDN.
+
+## The one guarantee
+
+**The model cannot write CSS.**
+
+`SiteSpecSchema` is strict and contains no styling fields. The model fills in typed
+sections and copy, then picks one of eight hand-built themes. The worst output is
+*plain* — never gradients, never glassmorphism, never three identical feature cards.
+That is enforced by the schema and checked by the test suite, not requested in a
+prompt.
+
+## Sixty seconds, enforced
 
 A build is **one request to Gemini** and the page is visible **inside 80 seconds**,
-usually in about 30. That limit is enforced in three independent places, not hoped
-for — see [the budget](#the-build-budget).
+usually around 30. Three independent things enforce that: a request deadline, a
+component watchdog, and a module-level timer no unmount can cancel. The drawing is
+sped up (never past `3×`) to fit the time left, and if the model runs long the
+finished page is painted anyway. `npm test` fails if the budget creeps above 90
+seconds.
 
-It runs on your machine at `localhost:5173`. No account, no server, no extension,
-no telemetry. Your own Gemini key, stored in your own browser.
+## What it does not do
 
-<!--
-  Media: drop these three files into docs/media/ and they appear here.
-  See docs/media/README.md for exactly what to record.
--->
-![The swarm drawing a page](docs/media/mid-build.gif)
+- **No backend, no sync, no backup.** Sites live in this browser's IndexedDB.
+  Export what you want to keep.
+- **Free-tier keys throttle.** Flash allows roughly 20 requests a day; the app falls
+  back to Flash-Lite and explains a rate limit on screen in plain words.
+- **The contact form opens your visitor's mail app.** There is no server to receive
+  a message, and the app will not pretend otherwise.
+- **Very long pages are drawn from a measured subset.** The camera follows the work
+  and the full page appears underneath.
+- **No Safari or Firefox support yet.** It needs the File System Access API for
+  saving.
+
+## Screenshots
 
 | | |
 |---|---|
 | ![The finished page](docs/media/finished.png) | ![Editing it in the inspector](docs/media/inspector.png) |
 
+These three images are generated from a real run, never mocked:
+
 ```bash
-npm install
-npm run dev          # http://localhost:5173
+npm run shots                 # drives your installed Chrome or Edge
+npm run shots -- --headed     # watch it happen
+npm run shots -- --check      # verify the plumbing without capturing
 ```
 
-Node 22.12+.
-
-## Try it in two minutes
-
-1. Get a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
-   No card. Both key formats work (`AQ.Ab…`, which AI Studio issues now, and `AIza…`).
-2. Paste it on the first screen. It is validated against Google and stored in
-   IndexedDB — it never leaves this machine except to Google.
-3. Pick a kind, write the brief, tick your sections, pick a theme.
-4. Watch the build. It has pause, `1×`/`2×`/`3×`, replay, and sound.
-5. The site is already in **Your sites**. Open it to edit every field, or export it
-   as a standalone `index.html`.
-
-## The one guarantee
-
-**The model cannot write CSS.** `SiteSpecSchema` is strict and has no styling fields.
-The model composes typed sections and writes copy, then picks one of eight hand-built
-themes. The worst possible output is *plain* — never slop. That is enforced by the
-schema, not by asking nicely in a prompt.
-
-## How it works
-
-```
-brief ──▶ Gemini ──▶ SiteSpec ──▶ renderDocument() ──▶ a real HTML page
-                                        │
-                                        ▼
-                              snapshotHtml(): measure the
-                              real DOM in a hidden iframe
-                                        │
-                                        ▼
-                     Blueprint (boxes, lines, every visual line
-                     of text, and where each one actually sits)
-                                        │
-                                        ▼
-                        Swarm draws it on a canvas, then the
-                        live page fades in underneath
-```
-
-The animation is not a cartoon of building. It is the browser's own layout,
-measured and then re-drawn — which is why the text lands where the text goes.
-
-## How to read this repo
-
-1. **[`src/lib/spec.ts`](src/lib/spec.ts)** — the contract. Read this first;
-   everything follows from it.
-2. **[`src/lib/blueprint.ts`](src/lib/blueprint.ts)** — how a rendered document is
-   taken apart into something drawable.
-3. **[`src/lib/swarm.ts`](src/lib/swarm.ts)** — the engine: regions, drags, typing,
-   copies, flocking.
-4. **[HANDOFF.md](HANDOFF.md)** — state, decisions, known gaps, the build budget.
-5. **[docs/BUILD-PLAN.md](docs/BUILD-PLAN.md)** — the product, the reference we
-   decoded, the "no AI patterns" doctrine.
+The tool builds the app, serves it locally, answers the single Gemini request with a
+canned spec (so it costs no quota and needs no key), clicks through the real screens,
+and writes the GIF and two PNGs into `docs/media/`. It never writes a placeholder: if
+it cannot find a browser it says so and exits `2`. See
+[docs/media/README.md](docs/media/README.md).
 
 ## Tests
 
 ```bash
-npm test
+npm test          # 27 suites · typecheck · build
 ```
 
-26 suites, browserless — jsdom, esbuild and a stubbed network. No API key, no
-Chromium, no secrets. They run on every push and pull request in
-[`.github/workflows/test.yml`](.github/workflows/test.yml).
+Browserless: jsdom, esbuild, a stubbed network. No key, no Chromium, no secrets. Every
+push runs them in [`.github/workflows/test.yml`](.github/workflows/test.yml). Most
+suites exist because a specific bug shipped; the commit messages say which.
 
-The suite is not decoration; several suites exist because a specific bug shipped:
+## Where to look next
 
-| suite | the bug it exists for |
-|---|---|
-| `budget-test`, `timeline-test` | a build could display for 518 seconds |
-| `lastresort-test` | the request timed out and the screen kept counting |
-| `watchdog-test` | a hung build never stopped itself |
-| `first-run-test` | the first build of a session always "failed", and the failed one appeared in your history |
-| `history-test` | built sites were never saved, so "Your sites" was always empty |
-| `download-test` | the export button produced no file |
-| `motion-test` | generated pages had zero animation |
-| `contact-test` | a phone number rendered as dead text and the contact form threw messages away |
-| `swarm-choreography-test` | the cursors orbited the page without ever touching what they built |
-| `gemini-test` | invented testimonials attributed to customers who do not exist |
-
-## The build budget
-
-One request. 80 seconds for the whole build, enforced by a request deadline, a
-component watchdog, and a module-level timer that no unmount can take away. The
-drawing is compressed to fit the remaining time (never past `3×`), and a hard cap
-paints the finished page and hands over. `npm test` fails if the budget is raised
-above 90 seconds.
-
-| model takes | speed | drawing | page visible |
-|---|---|---|---|
-| 2s | 1.0× | 19.8s | **22.3s** |
-| 8s | 1.0× | 19.8s | **29.8s** |
-| 20s | 3.0× | 5.9s | **30.9s** |
-| 50s | 3.0× | 6.0s | **46.5s** |
-
-## Known limits
-
-- **Free tier only.** Flash allows ~20 requests a day; the ladder falls back to
-  Flash-Lite (500/day) so a build usually still lands. A rate limit is explained on
-  screen in plain words, including when it resets.
-- **No backend, by design.** Everything is IndexedDB + the File System Access API.
-  Nothing syncs, nothing is backed up. Export what you want to keep.
-- **The contact form sends by mail.** There is no server to receive a message, so the
-  form opens the visitor's mail app with the message filled in rather than pretending.
-- **Very long pages** are drawn from a measured subset; the camera follows the work.
-- **The animation engine is an adaptation.** See [NOTICE](NOTICE).
+- [`src/lib/spec.ts`](src/lib/spec.ts) — the contract. Everything follows from it.
+- [`src/lib/blueprint.ts`](src/lib/blueprint.ts) — how a rendered page becomes drawable.
+- [`src/lib/swarm.ts`](src/lib/swarm.ts) — the animation engine.
+- [HANDOFF.md](HANDOFF.md) — state, decisions, known gaps.
+- [docs/BUILD-PLAN.md](docs/BUILD-PLAN.md) — the product and the "no AI patterns" doctrine.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — how to send a change.
 
 ## Credits
 
 The idea of a swarm of cursors building a page belongs to **Joel Califa**
-([Swarm](https://califa.github.io/swarm-site/)), and was brought to any-page
-rebuilds by **Dhvanil Patel** ([Swarm Rebuild](https://github.com/DhvanilPatel/swarm-cursors)).
-This project takes that language and points it at a page that does not exist yet.
-Read [NOTICE](NOTICE) before reusing the animation code.
+([Swarm](https://califa.github.io/swarm-site/)), and was extended to rebuilding
+existing pages by **Dhvanil Patel**
+([Swarm Rebuild](https://github.com/DhvanilPatel/swarm-cursors)). This project takes
+that language and points it at a page that does not exist yet. Read [NOTICE](NOTICE)
+before reusing the animation code.
 
-## License
+## Licence
 
-MIT for the code in this repository — see [LICENSE](LICENSE) and, importantly,
-[NOTICE](NOTICE) for what the license does and does not cover.
+MIT for the code here — see [LICENSE](LICENSE) and, importantly, [NOTICE](NOTICE) for
+what that licence does and does not cover.
