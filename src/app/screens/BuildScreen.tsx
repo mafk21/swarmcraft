@@ -483,6 +483,11 @@ export default function BuildScreen() {
     setLive(false);
     setProgress(0);
     setPaused(false);
+    /* A replay draws the SAME page, so the measured figures still hold — but
+       the landing counter and the caption described the last run and would
+       otherwise start again from where they stopped. */
+    setLanded(0);
+    setWorkingOn(null);
     setPhase('building');
     requestAnimationFrame(() => {
       const s = swarmRef.current;
@@ -492,6 +497,7 @@ export default function BuildScreen() {
         // a replay is not the paid build; it still may not trap the user
         hardCapMs: 45_000,
         onProgress: (p) => setProgress(p),
+        onLand: () => setLanded((n) => n + 1),
         onDone: () => {
           setPhase('done');
           setTimeout(() => setLive(true), 420);

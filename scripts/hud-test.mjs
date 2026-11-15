@@ -192,5 +192,18 @@ function swarmFor(bp) {
   ok('a stale mark is dropped, not kept', sw.lands.length === 0, String(sw.lands.length));
 }
 
+/* ── 4. a replay starts clean ─────────────────────────────────────────────
+   Replay reuses the same Swarm and the same canvas. Anything the previous run
+   left behind would be drawn over the new one, so play() must clear it. */
+
+{
+  const sw = swarmFor(measuredPage());
+  sw.lands = [{ x: 1, y: 1, at: performance.now(), color: '#f00', kind: 'box' }];
+  sw.doneBoxes.add(0);
+  sw.play({});
+  ok('a replay clears the marks from the last run', (sw.lands ?? []).length === 0, String((sw.lands ?? []).length));
+  ok('a replay clears the landed boxes too', sw.doneBoxes.size === 0);
+}
+
 console.log(fail ? `\nHUD ${fail} FAILED\n` : '\nHUD OK — the figures are measured, the caption follows the work, the marks expire\n');
 process.exit(fail ? 1 : 0);

@@ -661,6 +661,10 @@ export class Swarm {
     this.fullText.clear();
     this.wipe = 0;
     this.guideIn = 0;
+    /* Replay has no new canvas and no new Swarm, so anything left over from the
+       last run would be drawn again: stale ripples would flash in the finished
+       page's colours before the first box is even drawn. */
+    this.lands = [];
     for (const a of this.agents) {
       a.progress = 0;
       a.activeIndex = -1;
