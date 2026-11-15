@@ -53,6 +53,17 @@ We are not the authority on that boundary and this file is not legal advice.
   independent places, with the animation compressed to fit rather than the limit
   being ignored.
 
+## Third-party assets
+
+- **Fonts.** Instrument Serif, Instrument Sans and JetBrains Mono ship through the
+  `@fontsource` packages and are licensed under the SIL Open Font License 1.1, not
+  under this repository's MIT. The licence text is in each package's `LICENSE` in
+  `node_modules/@fontsource*` after `npm install`; redistributing a build of this
+  app means carrying it along.
+- **Libraries.** React, React DOM, zod, zustand and gifenc are MIT; `idb` is ISC;
+  `pdfjs-dist` is Apache-2.0. `npm run shots` uses `playwright-core`
+  (Apache-2.0) to drive a browser you already have — it downloads no browser.
+
 ---
 
 The MIT license in LICENSE covers the code in this repository. It does not,
