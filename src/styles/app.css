@@ -1577,3 +1577,40 @@
     align-items: stretch;
   }
 }
+
+/* ── undo in the inspector ────────────────────────────────────────────────
+   Two glyph buttons beside the title, where every editor puts them. Disabled
+   rather than hidden, so the affordance does not move around as you work. */
+
+.undo-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 2px;
+}
+
+.undo-btn {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--t1);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.undo-btn:hover:not(:disabled) {
+  background: var(--s2);
+  color: var(--t0);
+}
+
+.undo-btn:disabled {
+  opacity: 0.28;
+  cursor: default;
+}

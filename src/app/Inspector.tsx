@@ -20,6 +20,15 @@ import {
 import { THEMES, ACCENT_HEX } from '../lib/themes';
 import { SECTION_FIELDS, sectionSummary, type FieldSpec, type OField } from './editors';
 import { newSection } from '../lib/presets';
+import {
+  historyOf,
+  commit as commitHistory,
+  undo as undoHistory,
+  redo as redoHistory,
+  canUndo,
+  canRedo,
+  reset as resetHistory,
+} from '../lib/history';
 import { renderDocument } from '../lib/render';
 import { addMedia, getMedia } from '../lib/db';
 
@@ -36,6 +45,72 @@ export type InspectorProps = {
 export default function Inspector({ spec, onSpec, onToast, focus }: InspectorProps) {
   const [tab, setTab] = useState<Tab>('content');
   const [open, setOpen] = useState<number | null>(0);
+
+  /* ── undo ─────────────────────────────────────────────────────────────────
+     One history of whole specs. The present is the spec on screen; every edit
+     goes through `edit()` so there is exactly one path into it and no way to
+     change the page without leaving a step behind.
+
+     A spec arriving from outside — a build finishing, another site opened, a
+     theme applied from the design tab — is a RESET, not an edit: undo must not
+     walk back into a different site. */
+  const [hist, setHist] = useState(() => historyOf(spec, Date.now()));
+  const shown = hist.present;
+
+  useEffect(() => {
+    setHist((h) => resetHistory(h, spec, Date.now()));
+  }, [spec]);
+
+  function edit(next: SiteSpec, key: string) {
+    setHist((h) => {
+      const done = commitHistory(h, next, key, Date.now());
+      /* the committed present is what the rest of the app must see: onSpec
+         writes it back to the store, which is where the preview reads from */
+      if (done !== h) onSpec(done.present);
+      return done;
+    });
+  }
+
+  /* Ctrl/Cmd+Z and Shift+Z, but only while the caret is inside the inspector.
+     A global handler would eat undo in the key field and the brief box. */
+  const rootRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || e.key.toLowerCase() !== 'z') return;
+      const el = e.target as HTMLElement | null;
+      if (!rootRef.current?.contains(el)) return;
+      /* a text field inside the inspector has its own browser undo for the
+         caret; ours is for the spec, which is the thing that can be lost */
+      e.preventDefault();
+      if (e.shiftKey) redoNow();
+      else undoNow();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  function undoNow() {
+    setHist((h) => {
+      const back = undoHistory(h, Date.now());
+      if (back !== h) {
+        onSpec(back.present);
+        onToast('Undone.');
+      }
+      return back;
+    });
+  }
+
+  function redoNow() {
+    setHist((h) => {
+      const fwd = redoHistory(h, Date.now());
+      if (fwd !== h) {
+        onSpec(fwd.present);
+        onToast('Redone.');
+      }
+      return fwd;
+    });
+  }
 
   // clicking a section in the preview opens its card
   const lastNonce = useRef<number>(-1);
@@ -54,7 +129,7 @@ export default function Inspector({ spec, onSpec, onToast, focus }: InspectorPro
       onToast('That value is not allowed there — kept the previous one.');
       return;
     }
-    onSpec(next);
+    edit(next, `field:${idx}:${path.join('.')}`);
   }
 
   function setMeta(path: FieldPath, value: unknown) {
@@ -63,24 +138,44 @@ export default function Inspector({ spec, onSpec, onToast, focus }: InspectorPro
       onToast('That value is not allowed there — kept the previous one.');
       return;
     }
-    onSpec(next);
+    edit(next, `meta:${path.join('.')}`);
   }
 
   function addSection(type: SectionType) {
     if (spec.sections.length >= 9) return;
-    onSpec({ ...spec, sections: [...spec.sections, newSection(type)] });
+    edit({ ...spec, sections: [...spec.sections, newSection(type)] }, `add:${type}`);
     setOpen(spec.sections.length);
     onToast(`Added ${SECTION_LABEL[type].toLowerCase()}.`);
   }
 
   const unused = (Object.keys(SECTION_FIELDS) as SectionType[]).filter(
-    (t) => !spec.sections.some((s) => s.type === t) && t !== 'hero'
+    (t) => !shown.sections.some((s) => s.type === t) && t !== 'hero'
   );
 
   return (
-    <aside className="inspector">
+    <aside className="inspector" ref={rootRef}>
       <div className="inspector-head">
         <strong>Edit</strong>
+        <div className="undo-group">
+          <button
+            className="undo-btn"
+            onClick={undoNow}
+            disabled={!canUndo(hist)}
+            title="Undo (Ctrl+Z)"
+            aria-label="Undo"
+          >
+            ↶
+          </button>
+          <button
+            className="undo-btn"
+            onClick={redoNow}
+            disabled={!canRedo(hist)}
+            title="Redo (Ctrl+Shift+Z)"
+            aria-label="Redo"
+          >
+            ↷
+          </button>
+        </div>
         <div className="tabs" role="tablist">
           <button
             className="tab"
@@ -104,7 +199,7 @@ export default function Inspector({ spec, onSpec, onToast, focus }: InspectorPro
       <div className="inspector-body">
         {tab === 'content' ? (
           <>
-            {spec.sections.map((section, idx) => (
+            {shown.sections.map((section, idx) => (
               <SectionCard
                 key={idx}
                 idx={idx}
@@ -112,11 +207,11 @@ export default function Inspector({ spec, onSpec, onToast, focus }: InspectorPro
                 isOpen={open === idx}
                 onToggle={() => setOpen(open === idx ? null : idx)}
                 onSet={setField}
-                onMove={(delta) => onSpec(moveSection(spec, idx, delta))}
+                onMove={(delta) => edit(moveSection(spec, idx, delta), `move:${idx}:${Date.now()}`)}
                 onRemove={() => {
                   const n = removeSection(spec, idx);
                   if (n) {
-                    onSpec(n);
+                    edit(n, `remove:${Date.now()}`);
                     onToast('Section removed.');
                   } else {
                     onToast('That section is structural — it stays.');
@@ -125,13 +220,13 @@ export default function Inspector({ spec, onSpec, onToast, focus }: InspectorPro
                 onDuplicate={() => {
                   const n = duplicateSection(spec, idx);
                   if (n) {
-                    onSpec(n);
+                    edit(n, `dup:${Date.now()}`);
                     onToast('Section duplicated.');
                   } else {
                     onToast('Nine sections is the limit, or the hero cannot be copied.');
                   }
                 }}
-                last={idx === spec.sections.length - 1}
+                last={idx === shown.sections.length - 1}
               />
             ))}
 
