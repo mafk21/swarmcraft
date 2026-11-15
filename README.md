@@ -25,13 +25,64 @@ editable, and yours.
      renders the alt text instead of a broken frame. See docs/media/README.md. -->
 ![Nine cursors drawing a coffee roastery page: a hero dragged out with a W×H badge, a headline typed behind a caret, product cards stamped into copies](docs/media/mid-build.gif)
 
-<div align="center">
+## Quick start
 
-### `npm install` · `npm run dev` · paste a free key · build
+Clone to running in about two minutes. You need **Node 22.12 or newer**
+(`node -v`) and **Chrome** or **Edge**. Nothing else — no database, no Docker, no
+account.
 
-<sub>Node 22.12+ · [get a key](https://aistudio.google.com/apikey) · no card · nothing leaves your machine but the one request</sub>
+**1 · Get the code and start it**
 
-</div>
+```bash
+git clone https://github.com/mafk21/swarm-builder.git
+cd swarm-builder
+npm install
+npm run dev
+```
+
+Copy-paste the whole block; it runs top to bottom. The dev server prints its address:
+
+```
+  ➜  Local:   http://localhost:5173/
+```
+
+Open that in your browser. Leave the terminal running — it is the server.
+
+**2 · Paste a free key**
+
+Go to [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → **Create API
+key** → copy it → paste it into the first screen of the app. No card, no billing.
+
+The app tests the key by asking it to write a sentence, so a key that cannot build a
+page is refused there and then rather than thirty seconds into your first build. It is
+stored in your browser's IndexedDB and sent to Google and nowhere else. You can
+replace or forget it later from the same screen.
+
+**3 · Build something**
+
+Pick a kind → write the brief → tick your sections → choose type and colour → **Build
+my page**. The page saves itself into **Your sites**; open it to edit, or **Export
+HTML** for one file you own.
+
+<details>
+<summary><b>On Windows, or if something does not start</b></summary>
+
+The same commands work in PowerShell, Command Prompt or Git Bash.
+
+- **`npm` is not recognised** — install Node 22.12+ from [nodejs.org](https://nodejs.org)
+  and open a new terminal. `node -v` should print `v22.12.0` or higher.
+- **Port 5173 is already in use** — something else is running. Stop it, or start on
+  another port: `npm run dev -- --port 3000`.
+- **The page loads but a build fails immediately** — the key was rejected. Open the
+  setup screen, replace it, and try again. Google's free tier also throttles: the app
+  says so on screen when that is the cause.
+- **`npm install` fails on a font package** — three `@fontsource` packages are
+  dependencies and must install; a corporate proxy blocking npm is the usual reason.
+  The tests do not need them.
+- **Something else is broken** — `npm run doctor` prints what this build expects.
+  [Issues](https://github.com/mafk21/swarm-builder/issues) are open.
+
+</details>
 
 ---
 
