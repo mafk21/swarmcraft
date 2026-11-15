@@ -1,8 +1,9 @@
 /* ============================================================================
    npm run card — render the 1080×1920 story cards to PNG.
 
-     npm run card                 # every card
+     npm run card                 # every card, plus the poster
      npm run card -- launch       # just one
+     npm run card -- poster       # just the story poster
      npm run card -- --svg        # write the SVGs only, no PNG
      npm run card -- --check      # fonts and names only, render nothing
 
@@ -23,7 +24,7 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 
-import { CARDS, CARD_NAMES, CARD_W, CARD_H, CARD_FONTS, CARD_FONT_DIRS, renderCardSvg } from './lib/story-cards.mjs';
+import { CARDS, CARD_NAMES, CARD_RENDERERS, CARD_W, CARD_H, CARD_FONTS, CARD_FONT_DIRS } from './lib/story-cards.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const MEDIA = join(ROOT, 'docs', 'media');
@@ -38,10 +39,11 @@ const names = wanted.length ? wanted : Object.keys(CARD_NAMES);
 const kb = (p) => `${(statSync(p).size / 1024).toFixed(0)} kB`.padStart(8);
 
 async function main() {
-  const unknown = names.filter((n) => !(n in CARDS));
+  const unknown = names.filter((n) => !(n in CARD_RENDERERS));
   if (unknown.length) {
     console.error(`\n  Unknown card: ${unknown.join(', ')}\n\n  Available:\n`);
     for (const [k, v] of Object.entries(CARD_NAMES)) console.error(`    ${k.padEnd(12)} ${v}`);
+    console.error(`    ${'poster'.padEnd(12)} the story poster — no bullet points, one sheet of paper`);
     console.error('');
     return 1;
   }
@@ -94,7 +96,9 @@ async function main() {
   }
 
   for (const name of names) {
-    const svg = renderCardSvg(CARDS[name]);
+    /* The poster is a different composition, not a different template: no
+       proofs, no bullet list, one claim and the sheet of paper it is about. */
+    const svg = CARD_RENDERERS[name]();
     const svgPath = join(MEDIA, `story-${name}.svg`);
     writeFileSync(svgPath, svg);
     console.log(`  ${`story-${name}.svg`.padEnd(22)} ${kb(svgPath)}`);

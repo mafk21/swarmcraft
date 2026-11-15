@@ -102,3 +102,31 @@ labelled as one — if you want the product itself, that is `npm run shots`.
 If the copy needs changing, change it in `scripts/lib/story-cards.mjs`; a test
 fails on emoji and on the usual marketing words, so the card cannot slip into the
 register the product is against.
+
+---
+
+# Logo
+
+```bash
+npm run logo            # writes everything below
+npm run logo -- --check # names and outputs only
+```
+
+| file | use |
+|---|---|
+| `docs/media/logo.svg` | the mark, ink on transparent — dark backgrounds |
+| `docs/media/logo-dark.svg` | the mark on its own tile — avatars, store listings |
+| `docs/media/logo-light.svg` | ink on a light page |
+| `docs/media/logo-512.png`, `logo-128.png` | raster versions of the tile |
+| `docs/media/wordmark.svg`, `wordmark.png` | mark + name + what it is; the README uses the SVG |
+| `public/favicon.svg` | the browser tab |
+
+The mark is **a box that is not finished, and the cursor that is finishing it** —
+one continuous stroke with the bottom-right corner missing, and one arrow in that
+gap. It is the product's smallest true statement, and it is two shapes, which is
+why it still reads at 16px.
+
+What it deliberately is not: nine icons on a circle (the first attempt — the
+stock AI-brand shape), a sparkle, a gradient orb, or a glyph that only works on a
+dark background. `scripts/logo-test.mjs` fails on a gradient, a glow, a filled
+box, a multi-path frame, or a mark that cannot be rendered in one colour.
