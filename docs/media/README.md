@@ -82,7 +82,12 @@ npm run card -- --check   # check fonts and names, render nothing
 | `docs/media/story-launch.png` | 1080×1920 | what the thing is: the claim, a drawing of a page mid-build, three proofs, the repo URL |
 | `docs/media/story-guarantee.png` | 1080×1920 | the rule: the model never writes CSS |
 | `docs/media/story-poster.png` | 1080×1920 | one enormous claim, one sheet of paper being dragged, no bullet points |
-| `docs/media/story-social.png` | **1280×640** | the link preview — what shows on Slack, X, WhatsApp, anywhere the repo URL is pasted |
+| `docs/media/story-social.png` | **1280×640** | the link preview — what shows on Slack, X, WhatsApp, anywhere the repo URL is pasted. Opens with the README's own wordmark, so the link and the page it opens look like one object |
+
+The header of the social preview is generated from `wordmarkSvg()` — the same
+function the README's wordmark comes from — not redrawn. A test asserts the two
+match, because a preview that disagrees with the page it opens is the kind of
+mismatch nobody notices until a stranger points it out.
 
 **The social preview is uploaded by hand and cannot be set by the API.** GitHub →
 Settings → Social preview → upload `docs/media/story-social.png`. It must stay under

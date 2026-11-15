@@ -37,6 +37,7 @@ import {
   CARD_FONTS,
   CARD_FONT_DIRS,
 } from './lib/story-cards.mjs';
+import { wordmarkSvg } from './lib/logo.mjs';
 
 let fail = 0;
 const ok = (name, cond, detail = '') => {
@@ -119,7 +120,16 @@ for (const [name, card] of Object.entries(CARDS)) {
   ok('social: is 1280×640', SOCIAL_W === 1280 && SOCIAL_H === 640 && svg.includes('width="1280" height="640"'));
   ok('social: has the url', svg.includes(REPO));
   ok('social: names the three families', ['Instrument Serif', 'Instrument Sans', 'JetBrains Mono'].every((f) => svg.includes(`font-family="${f}"`)));
-  ok('social: nine cursors are not needed here, five are on the sheet', (svg.match(/<path d="M3 2 L3 19/g) ?? []).length === 5);
+  ok('social: four cursors are on the sheet', (svg.match(/<path d="M3 2 L3 19/g) ?? []).length === 4, String((svg.match(/<path d="M3 2 L3 19/g) ?? []).length));
+
+  /* The header is the README's wordmark, not a redrawing of it. If the two ever
+     disagree, a link and the page it opens stop looking like one object — so
+     the name, the rule and the words come from wordmarkSvg itself, and this
+     asserts the pieces are present the way the README shows them. */
+  for (const part of ['>Swarmcraft</text>', 'WEBSITE BUILDER']) {
+    ok(`social: the header carries "${part}"`, svg.includes(part));
+  }
+  ok('social: the header is the wordmark, not a hand copy', svg.includes(wordmarkSvg({ height: 86 }).match(/<text[^>]*>Swarmcraft<\/text>/)[0]));
   ok('social: no external request', !/href="https?:|xlink:href/.test(svg));
   ok('social: no gradient', !/<(linear|radial)Gradient|url\(#[^)]*[Gg]radient/.test(svg));
   ok('social: nothing runs off the right edge', !/<text[^>]*x="(1[3-9]\d\d|\d{5,})"/.test(svg));

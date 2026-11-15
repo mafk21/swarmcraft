@@ -22,6 +22,10 @@
    ========================================================================== */
 
 import { readFileSync } from 'node:fs';
+/* The wordmark is the README's header. The link preview is that header, so it
+   is generated from the same function rather than redrawn by hand — one
+   spelling of the name, one arrangement, one place to change it. */
+import { wordmarkSvg } from './logo.mjs';
 
 /**
  * How many suites `npm test` runs, read from package.json.
@@ -511,53 +515,75 @@ export function renderPosterSvg() {
    GitHub accepts nothing larger than 1 MB here, so this is rendered at exactly
    1280×640 rather than drawn huge and scaled down. */
 
+/**
+ * The README header at link-preview scale: mark, name, rule, what it is.
+ *
+ * Taken from `wordmarkSvg` and stripped of its own <svg> wrapper, so the geometry
+ * and the wording are the same object the README shows. If the wordmark changes,
+ * this changes with it — a preview that disagrees with the page it opens is the
+ * kind of mismatch nobody notices until a stranger points it out.
+ */
+const SOCIAL_HEADER = wordmarkSvg({ height: 86 })
+  .replace(/^<svg[^>]*>/, '')
+  .replace(/<\/svg>\s*$/, '');
+
 export const SOCIAL_W = 1280;
 export const SOCIAL_H = 640;
 
 export function renderSocialSvg() {
-  /* The sheet: the page being built, at the right, measured off its own box so
-     the cursors land on its edges instead of near them. */
-  const SHEET = { x: 706, y: 152, w: 470, h: 372 };
-  const inner = SHEET.x + 30;
-  const on = (fx, fy, i, size = 30) =>
-    cursor(SHEET.x + SHEET.w * fx, SHEET.y + SHEET.h * fy, i, size);
+  /* The header the README opens with, at link-preview size: the mark, the name,
+     the rule, what it is. Same words, same arrangement, one reading distance
+     further away — so a link and the repo it opens look like the same object
+     rather than two unrelated pictures.
+
+     Everything below the header is the thing the name claims: nine cursors
+     drawing a page, drawn from the same measured geometry as the story cards. */
+  const headY = 92;
+
+  /* The page being built, framed and measured off its own box so the cursors
+     land on its edges rather than near them. */
+  const SHEET = { x: 180, y: 238, w: 920, h: 286 };
+  const inner = SHEET.x + 34;
+  const on = (fx, fy, i, size = 34) => cursor(SHEET.x + SHEET.w * fx, SHEET.y + SHEET.h * fy, i, size);
 
   const sheet = `
   <g>
-    <rect x="${SHEET.x}" y="${SHEET.y}" width="${SHEET.w}" height="${SHEET.h}" rx="7" fill="${S1}" stroke="${L2}"/>
-    <path d="M${SHEET.x + 7} ${SHEET.y} h${SHEET.w - 14} a7 7 0 0 1 7 7 v22 h-${SHEET.w} v-22 a7 7 0 0 1 7-7 z" fill="${S2}"/>
-    <line x1="${SHEET.x}" y1="${SHEET.y + 29}" x2="${SHEET.x + SHEET.w}" y2="${SHEET.y + 29}" stroke="${L1}"/>
-    <text x="${inner}" y="${SHEET.y + 19}" font-family="JetBrains Mono" font-size="13" fill="${T2}">falconroasters.sa</text>
+    <rect x="${SHEET.x}" y="${SHEET.y}" width="${SHEET.w}" height="${SHEET.h}" rx="9" fill="${S1}" stroke="${L2}"/>
+    <path d="M${SHEET.x + 9} ${SHEET.y} h${SHEET.w - 18} a9 9 0 0 1 9 9 v24 h-${SHEET.w} v-24 a9 9 0 0 1 9-9 z" fill="${S2}"/>
+    <line x1="${SHEET.x}" y1="${SHEET.y + 33}" x2="${SHEET.x + SHEET.w}" y2="${SHEET.y + 33}" stroke="${L1}"/>
+    <circle cx="${inner + 4}" cy="${SHEET.y + 17}" r="4" fill="${L3}"/>
+    <circle cx="${inner + 18}" cy="${SHEET.y + 17}" r="4" fill="${L3}"/>
+    <text x="${inner + 36}" y="${SHEET.y + 22}" font-family="JetBrains Mono" font-size="14" fill="${T2}">falconroasters.sa</text>
 
-    <text x="${inner}" y="${SHEET.y + 96}" font-family="Instrument Serif" font-size="40" fill="${T0}">Roasted on</text>
-    <text x="${inner}" y="${SHEET.y + 140}" font-family="Instrument Serif" font-size="40" fill="${T0}">Tuesday</text>
-    <rect x="${inner + advance('Tuesday', 40, 'serif') + 5}" y="${SHEET.y + 110}" width="3" height="34" fill="${MARK_ACCENT}"/>
+    <text x="${inner}" y="${SHEET.y + 112}" font-family="Instrument Serif" font-size="60" fill="${T0}">Roasted on Tuesday,</text>
+    <text x="${inner}" y="${SHEET.y + 178}" font-family="Instrument Serif" font-size="60" fill="${T0}">in your cup by Thursday</text>
+    <rect x="${inner + advance('in your cup by Thursday', 60, 'serif') + 6}" y="${SHEET.y + 132}" width="4" height="52" fill="${MARK_ACCENT}"/>
 
-    <line x1="${inner}" y1="${SHEET.y + 172}" x2="${SHEET.x + SHEET.w - 30}" y2="${SHEET.y + 172}" stroke="${L1}"/>
+    <line x1="${inner}" y1="${SHEET.y + 192}" x2="${SHEET.x + SHEET.w - 34}" y2="${SHEET.y + 192}" stroke="${L1}"/>
 
+    <!-- Two priced rows, laid out as measured rules rather than cards. Nothing
+         overlaps the headline: the caret already sits at the end of it, and a
+         second mark in the same 40px reads as a mistake, not as work. -->
     ${[0, 1]
       .map((i) => {
-        const y = SHEET.y + 214 + i * 48;
+        const y = SHEET.y + 234 + i * 40;
         return `
-    <text x="${inner}" y="${y}" font-family="Instrument Sans" font-size="18" fill="${T1}">${['Espresso Roast', 'Filter Papers'][i]}</text>
-    <text x="${SHEET.x + SHEET.w - 30}" y="${y}" text-anchor="end" font-family="JetBrains Mono" font-size="16" fill="${T2}">${['SAR 65', 'SAR 12'][i]}</text>
-    <line x1="${inner}" y1="${y + 15}" x2="${SHEET.x + SHEET.w - 30}" y2="${y + 15}" stroke="${L1}" opacity="0.7"/>`;
+    <text x="${inner}" y="${y}" font-family="Instrument Sans" font-size="20" fill="${T1}">${['Espresso Roast', 'Filter Papers'][i]}</text>
+    <text x="${SHEET.x + SHEET.w - 34}" y="${y}" text-anchor="end" font-family="JetBrains Mono" font-size="18" fill="${T2}">${['SAR 65', 'SAR 12'][i]}</text>
+    <line x1="${inner}" y1="${y + 16}" x2="${SHEET.x + SHEET.w - 34}" y2="${y + 16}" stroke="${L1}" opacity="0.7"/>`;
       })
       .join('')}
 
-    <!-- the card being stamped, two corners still open -->
-    <rect x="${inner}" y="${SHEET.y + 288}" width="186" height="58" rx="4" fill="${S3}" stroke="${L3}" stroke-dasharray="6 5"/>
-    <text x="${inner + 93}" y="${SHEET.y + 322}" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="${T1}">186 × 58</text>
+    <!-- One gesture says "not finished yet": the sheet's own corner, still
+         being dragged. A second half-drawn block inside the page competed with
+         the content and made the whole thing read as clutter, so there is one. -->
+    <path d="M${SHEET.x + SHEET.w - 64} ${SHEET.y + SHEET.h} h48" stroke="${MARK_ACCENT}" stroke-width="3" stroke-linecap="round"/>
+    <rect x="${SHEET.x + SHEET.w - 22}" y="${SHEET.y + SHEET.h - 6}" width="12" height="12" fill="${MARK_ACCENT}"/>
 
-    <!-- the corner still being dragged, and the handle on it -->
-    <path d="M${SHEET.x + SHEET.w - 74} ${SHEET.y + SHEET.h} h54" stroke="${MARK_ACCENT}" stroke-width="2.5" stroke-linecap="round"/>
-    <rect x="${SHEET.x + SHEET.w - 24}" y="${SHEET.y + SHEET.h - 5}" width="10" height="10" fill="${MARK_ACCENT}"/>
-
-    ${on(0.99, 0.99, 0, 34)}
-    ${on(0.2, 0.1, 1)}
-    ${on(0.62, 0.5, 2)}
-    ${on(0.06, 0.72, 3)}
-    ${on(0.86, 0.44, 4)}
+    ${on(0.985, 0.985, 0, 40)}
+    ${on(0.5, 0.08, 1)}
+    ${on(0.2, 0.62, 2)}
+    ${on(0.86, 0.9, 4)}
   </g>`;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${SOCIAL_W}" height="${SOCIAL_H}" viewBox="0 0 ${SOCIAL_W} ${SOCIAL_H}">
@@ -570,17 +596,13 @@ export function renderSocialSvg() {
   <rect width="${SOCIAL_W}" height="${SOCIAL_H}" fill="${S0}"/>
   <rect width="${SOCIAL_W}" height="${SOCIAL_H}" fill="url(#graticule)"/>
 
-  <text x="72" y="96" font-family="JetBrains Mono" font-size="17" letter-spacing="5" fill="${T2}">${BRAND} · A WEBSITE BUILDER THAT DRAWS</text>
-  <line x1="72" y1="122" x2="1208" y2="122" stroke="${L2}"/>
-
-  <text x="68" y="266" font-family="Instrument Serif" font-size="104" fill="${T0}">Write a brief.</text>
-  <text x="68" y="374" font-family="Instrument Serif" font-size="104" fill="${T0}">Nine cursors</text>
-  <text x="68" y="482" font-family="Instrument Serif" font-size="104" font-style="italic" fill="${ACC}">draw it.</text>
-
-  <text x="72" y="540" font-family="JetBrains Mono" font-size="22" fill="${T0}">github.com/mafk21/swarmcraft</text>
-  <text x="72" y="580" font-family="JetBrains Mono" font-size="15" letter-spacing="3" fill="${T3}">ONE REQUEST · 80 SECONDS · NO BACKEND · MIT</text>
+  <!-- the README header, same order: mark, name, rule, what it is -->
+  <g transform="translate(72 ${headY})">${SOCIAL_HEADER}</g>
 
   ${sheet}
+
+  <text x="72" y="600" font-family="JetBrains Mono" font-size="19" fill="${T0}">github.com/mafk21/swarmcraft</text>
+  <text x="1208" y="600" text-anchor="end" font-family="JetBrains Mono" font-size="17" letter-spacing="3" fill="${T3}">ONE REQUEST · 80 SECONDS · MIT</text>
 </svg>`;
 }
 
