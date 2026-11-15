@@ -31,8 +31,6 @@ editable, and yours.
   When the GIF exists, put it back here — one line, and the alt text is already
   written in docs/media/README.md.
 -->
-<img src="docs/media/story-poster.png" width="420" alt="A story poster: 'Your website, drawn in front of you' above a page being dragged out of a box by nine cursors.">
-
 ## Quick start
 
 Clone to running in about two minutes. You need **Node 22.12 or newer**
