@@ -1513,3 +1513,67 @@
 .prompt-box::placeholder {
   color: var(--t3);
 }
+
+/* ── the sample brief ─────────────────────────────────────────────────────
+   A quiet strip above the name field, shown only while the form is empty. It
+   is the difference between "what do I type" and a first build, so it gets to
+   look like an offer rather than a warning: no accent border, no icon, one
+   sentence and one button. */
+
+.sample-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--l2);
+  border-radius: 4px;
+  background: var(--s1);
+}
+
+.sample-cta > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sample-cta strong {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--t0);
+}
+
+.sample-cta span {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--t2);
+  max-width: 46ch;
+}
+
+/* after loading: the same strip, but it is now a statement about the page */
+.sample-note {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--c0);
+  background: rgba(91, 140, 255, 0.07);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--t1);
+}
+
+.sample-note strong {
+  color: var(--t0);
+  font-weight: 500;
+}
+
+@media (max-width: 640px) {
+  .sample-cta,
+  .sample-note {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
