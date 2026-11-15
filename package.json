@@ -3,7 +3,7 @@
   "private": false,
   "version": "0.1.0",
   "type": "module",
-  "description": "A local app that builds you a real website, with a swarm of cursors doing the building.",
+  "description": "Nine AI cursors draw your website in front of you. Runs locally, your own Gemini key, no backend. Keep the HTML.",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
