@@ -52,3 +52,10 @@ We are not the authority on that boundary and this file is not legal advice.
 - **The build budget.** One request, a hard 80-second wall, enforced in three
   independent places, with the animation compressed to fit rather than the limit
   being ignored.
+
+---
+
+The MIT license in LICENSE covers the code in this repository. It does not,
+and cannot, grant any right to the choreography described above, which is
+adapted from a separately published work and is included here with
+attribution only.
