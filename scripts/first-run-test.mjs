@@ -61,8 +61,12 @@ await build({
             constructor() {}
             resize() {}
             get duration() { return 1000; }
+            get workingSection() { return 0; }
             play(o) { setTimeout(() => o.onDone && o.onDone(), 120); }
             stop() {} finishAll() {} setSpeed() {}
+          }
+          export function summariseBlueprint() {
+            return { sections: [{ index: 0, name: 'Hero', share: 1 }], boxes: 0, texts: 0, lines: 0, chars: 0 };
           }`,
       }));
       /* Measuring a real page in an iframe needs far more than a 900ms test

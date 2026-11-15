@@ -113,6 +113,66 @@ export type PlayOptions = {
   hardCapMs?: number;
 };
 
+/**
+ * What the HUD can honestly say about the page being drawn.
+ *
+ * Every number here comes from the blueprint — the measured DOM — so the labels
+ * on screen are descriptions of the work in the plan, never decorative copy
+ * invented for the reel. A section that holds nothing measurable is not listed.
+ */
+export type BlueprintSummary = {
+  /** sections in page order, with how much of the page each one is */
+  sections: { index: number; name: string; share: number }[];
+  boxes: number;
+  texts: number;
+  lines: number;
+  chars: number;
+};
+
+/**
+ * Turn a blueprint into human labels.
+ *
+ * The snapshot records which section each box and line of text belongs to (the
+ * renderer already stamps `data-sec` on them), but it stores no names. Names
+ * are recovered here by reading the page order against the section labels the
+ * caller passes in — and when that disagrees with what was measured, the
+ * measurement wins and the section is called by its number. Honest beats tidy.
+ */
+export function summariseBlueprint(
+  bp: Blueprint,
+  labels: Record<number, string> = {}
+): BlueprintSummary {
+  const area = new Map<number, number>();
+
+  for (const b of bp.boxes) {
+    const sec = b.section;
+    if (sec === null || sec === undefined) continue;
+    area.set(sec, (area.get(sec) ?? 0) + Math.max(1, b.w * b.h));
+  }
+  for (const t of bp.texts) {
+    const sec = t.section;
+    if (sec === null || sec === undefined) continue;
+    area.set(sec, (area.get(sec) ?? 0) + Math.max(1, t.w * t.h));
+  }
+
+  const total = Math.max(1, [...area.values()].reduce((a, b) => a + b, 0));
+  const sections = [...area.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([index, a]) => ({
+      index,
+      name: labels[index] ?? `Section ${index + 1}`,
+      share: a / total,
+    }));
+
+  return {
+    sections,
+    boxes: bp.boxes.length,
+    texts: bp.texts.length,
+    lines: bp.lines.length,
+    chars: bp.texts.reduce((n, t) => n + t.text.length, 0),
+  };
+}
+
 /* ── region assignment ───────────────────────────────────────────────────── */
 
 /** Three columns by three rows: which region a point belongs to. */
@@ -208,6 +268,17 @@ export class Swarm {
   private rulerIn = 0;
   private guideIn = 0;
 
+  /**
+   * Where work has just landed, in page coordinates, for a moment.
+   *
+   * The complaint that started this was that the cursors looked like they were
+   * skating over the page rather than making it. Watching a box appear is one
+   * thing; seeing the cursor that made it leave a mark where it landed — the
+   * ripple, then the corner bracket that stays — is what makes the page look
+   * made. Entries are pruned as they age, so this never grows.
+   */
+  private lands: { x: number; y: number; at: number; color: string; kind: Step['kind'] }[] = [];
+
   /* the blank page, then work, then a short dispersal */
   private elapsed = 0;
   private readonly introMs = 900;
@@ -235,6 +306,31 @@ export class Swarm {
       if (arr) arr.push(p);
       else this.stepByTarget.set(key, [p]);
     }
+  }
+
+  /* ── what the HUD shows ──────────────────────────────────────────────── */
+
+  /**
+   * The section the swarm is working on right now: the section belonging to the
+   * most recently started step that is still running. This is what the caption
+   * under the progress rail names, so it changes when the work moves down the
+   * page and never claims a section no cursor is in.
+   */
+  get workingSection(): number | null {
+    const elapsed = this.elapsed;
+    let best: { at: number; section: number | null } | null = null;
+    for (const p of this.plan) {
+      if (p.start > elapsed) break;
+      if (elapsed > p.start + p.dur * 1000) continue;
+      const section =
+        p.step.kind === 'line'
+          ? (this.bp.lines[p.step.index] as { section?: number | null } | undefined)?.section ?? null
+          : p.step.kind === 'text'
+            ? this.bp.texts[p.step.index]?.section ?? null
+            : this.bp.boxes[p.step.index]?.section ?? null;
+      if (!best || p.start >= best.at) best = { at: p.start, section };
+    }
+    return best?.section ?? null;
   }
 
   private boxIdx = new WeakMap<object, number>();
@@ -565,6 +661,10 @@ export class Swarm {
     this.fullText.clear();
     this.wipe = 0;
     this.guideIn = 0;
+    /* Replay has no new canvas and no new Swarm, so anything left over from the
+       last run would be drawn again: stale ripples would flash in the finished
+       page's colours before the first box is even drawn. */
+    this.lands = [];
     for (const a of this.agents) {
       a.progress = 0;
       a.activeIndex = -1;
@@ -761,6 +861,14 @@ export class Swarm {
         else this.fullText.add(st.index);
 
         if (fresh) {
+          const at = st.to;
+          this.lands.push({
+            x: active.draw === 'text' ? at.x + 180 : at.x,
+            y: at.y,
+            at: performance.now(),
+            color: this.agents[active.agent].color,
+            kind: st.kind,
+          });
           this.opts.onLand?.(active.draw === 'rect' ? 'rect' : active.draw);
           if (this.sound) {
             const pan = (st.to.x / this.bp.width) * 2 - 1;
@@ -1043,6 +1151,9 @@ export class Swarm {
       }
     }
 
+    /* the marks work leaves where it lands */
+    if (!final && !all) this.drawLandings(ctx, cam);
+
     ctx.restore();
 
     /* cursors */
@@ -1060,6 +1171,41 @@ export class Swarm {
         ctx.globalAlpha = 1;
       }
     }
+  }
+
+  /**
+   * Ripples where work just landed.
+   *
+   * A ripple expands and fades over ~620ms in the colour of the cursor that
+   * made it; text landings get a shorter, flatter pulse because a ripple under
+   * a paragraph reads as a mistake. Deliberately quiet: this is punctuation, not
+   * confetti, and the page being built is the thing worth looking at.
+   */
+  private drawLandings(ctx: CanvasRenderingContext2D, cam: number) {
+    const now = performance.now();
+    const LIFE = 620;
+    this.lands = this.lands.filter((l) => now - l.at < LIFE);
+    if (!this.lands.length) return;
+
+    ctx.save();
+    for (const l of this.lands) {
+      const t = (now - l.at) / LIFE;
+      if (t < 0 || t > 1) continue;
+      const y = l.y - cam;
+      if (y < -80 || y > this.canvas.height / this.dpr + 80) continue;
+
+      const ease = 1 - Math.pow(1 - t, 3);
+      const r = (l.kind === 'text' ? 9 : 15) + ease * (l.kind === 'text' ? 14 : 26);
+      ctx.globalAlpha = (1 - t) * (l.kind === 'text' ? 0.4 : 0.55);
+      ctx.strokeStyle = l.color;
+      ctx.lineWidth = l.kind === 'text' ? 1 : 1.4;
+      ctx.beginPath();
+      // an ellipse, because the page is wider than it is tall
+      ctx.ellipse(l.x, y, r, r * 0.62, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   /** the blank sheet: page colour, a faint grid, nothing else */

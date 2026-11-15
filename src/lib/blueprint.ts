@@ -16,6 +16,8 @@ export type Rect = { x: number; y: number; w: number; h: number };
 /** One visual line of text, with its exact glyph box. */
 export type LineText = Rect & {
   text: string;
+  /** which `.sec[data-sec]` this line sits in; null outside a section */
+  section?: number | null;
   size: number;
   weight: number;
   font: string; // full CSS font-family list, usable by ctx.font
@@ -26,6 +28,8 @@ export type LineText = Rect & {
 
 export type BoxNode = Rect & {
   role: 'surface' | 'card' | 'rule' | 'image' | 'button' | 'input' | 'nav';
+  /** which `.sec[data-sec]` this box sits in; null for the page frame */
+  section?: number | null;
   radius: number;
   border: number;
   borderColor: string;
@@ -216,6 +220,17 @@ export function snapshot(doc: Document): Blueprint {
     h: r.height,
   });
 
+  /* Which `.sec[data-sec]` an element belongs to, or null. Read off the DOM
+     rather than assumed, because the renderer is the one that knows where its
+     sections are — and the nav and footer are outside every one of them. */
+  const sectionOf = (el: Element): number | null => {
+    const host = el.closest('[data-sec]');
+    if (!host) return null;
+    const v = host.getAttribute('data-sec');
+    const n = v === null ? NaN : parseInt(v, 10);
+    return Number.isFinite(n) ? n : null;
+  };
+
   let visited = 0;
   const walk = (el: Element) => {
     if (++visited > MAX_ELEMENTS) return;
@@ -277,6 +292,7 @@ export function snapshot(doc: Document): Blueprint {
       boxes.push({
         ...r,
         role,
+        section: sectionOf(el),
         radius: px(cs.borderTopLeftRadius),
         border: hasBorder ? Math.min(6, bw) : 0,
         borderColor: hasBorder ? cs.borderTopColor : TRANSPARENT,
@@ -299,6 +315,7 @@ export function snapshot(doc: Document): Blueprint {
         texts.push({
           ...rel(c.rect),
           text: c.text,
+          section: sectionOf(el),
           size: px(cs.fontSize) || 16,
           weight: parseInt(cs.fontWeight, 10) || 400,
           font: cs.fontFamily,
