@@ -1,5 +1,7 @@
 # Swarmsmith
 
+[![tests](https://github.com/mafk21/swarm-builder/actions/workflows/test.yml/badge.svg)](https://github.com/mafk21/swarm-builder/actions/workflows/test.yml)
+
 **Write a brief. Nine cursors draw your website. Keep the HTML.**
 
 Swarmsmith is a website builder that runs on your machine. You describe the site
@@ -11,9 +13,12 @@ is interactive, editable, and exports as one `index.html` file you own.
 No account. No server. No browser extension. Your own Gemini key, stored in your
 own browser.
 
-<picture>
-  <img src="docs/media/mid-build.gif" width="880" alt="Nine cursors drawing a coffee roastery page: a hero dragged out, a headline typed, product cards copied.">
-</picture>
+<!--
+  The demo GIF. `npm run shots` writes docs/media/mid-build.gif; until it is
+  committed, GitHub renders the alt text rather than a broken frame. See
+  docs/media/README.md.
+-->
+![Nine cursors drawing a coffee roastery page: a hero dragged out with a W×H badge, a headline typed behind a caret, product cards stamped into copies](docs/media/mid-build.gif)
 
 ```bash
 git clone https://github.com/mafk21/swarm-builder.git && cd swarm-builder
@@ -73,11 +78,7 @@ seconds.
 
 ## Screenshots
 
-| | |
-|---|---|
-| ![The finished page](docs/media/finished.png) | ![Editing it in the inspector](docs/media/inspector.png) |
-
-These three images are generated from a real run, never mocked:
+Everything in this README is captured from a real run, never mocked:
 
 ```bash
 npm run shots                 # drives your installed Chrome or Edge

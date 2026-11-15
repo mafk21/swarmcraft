@@ -63,5 +63,5 @@ it involved a real API key or the app's own stubbed paths.
 
 By opening a pull request you agree your contribution is licensed under the
 repository's terms: MIT for the code, with the animation-choreography caveat in
-[NOTICE](../NOTICE) applying. Do not paste in code from another project unless its
+[NOTICE](NOTICE) applying. Do not paste in code from another project unless its
 license permits it and you say so in the PR.

@@ -48,6 +48,16 @@ a machine under load gives you fewer frames, not a wrong one.
   renders badly, fix the demo spec in `scripts/lib/shots-kit.mjs` — that is the
   finding, not a capture problem.
 
+## If the images are not there yet
+
+The README references `docs/media/mid-build.gif`, which does not exist until
+someone runs the tool on a machine with Chrome in it. Until then GitHub shows the
+image's alt text where it would be — the page still reads correctly, because the
+alt text is a full sentence and the pitch is in the paragraph above it.
+
+Capturing them is the last step before announcing the project, not a prerequisite
+for publishing it.
+
 ## Rules
 
 Real screenshots only. A mocked-up "what it looks like" on a project whose whole pitch
