@@ -22,7 +22,7 @@ no glassmorphism, no emoji, no sparkles, no centred hero over three identical ca
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 26 suites, browserless, no key needed
+npm test           # 27 suites, browserless, no key needed
 npm run doctor     # are the safety nets still in place?
 ```
 
