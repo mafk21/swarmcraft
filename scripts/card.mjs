@@ -79,7 +79,7 @@ async function main() {
      family names in the SVG. Passing the buffer was ignored; passing a file
      path as the font-family was worse — every string came out in the first face
      loaded. So: decompress to .ttf on disk, name the families properly. */
-  const fontDir = mkdtempSync(join(tmpdir(), 'swarmsmith-cards-'));
+  const fontDir = mkdtempSync(join(tmpdir(), 'swarmcraft-cards-'));
   const NAMES = { serif: 'InstrumentSerif', sans: 'InstrumentSans', mono: 'JetBrainsMono' };
 
   /* One at a time, deliberately. `wawoff2.decompress` is not concurrency-safe:

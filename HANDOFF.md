@@ -2,6 +2,14 @@
 
 Pick this up cold. Everything you need is in this file and the code.
 
+## Renamed
+
+`swarmsmith` → **`swarmcraft`** before publication. The IndexedDB database was
+renamed with it, and `src/lib/db.ts` copies any data out of the old `swarmsmith`
+database on first open, once, without deleting it — a rename must not cost anyone
+the sites they built. The old key/value names are the only place the old name
+survives, on purpose.
+
 ## What it is
 
 A local app that builds a real website. You answer a few questions, pick a kind and

@@ -30,7 +30,7 @@ const light = markSvg({ size: 512, mode: 'bare', ink: '#0b0b0c' });
 
 ok('is an svg with a 24 viewBox', /^<svg [^>]*viewBox="0 0 24 24"/.test(bare));
 ok('scales by attribute, not by redrawing', bare.includes('width="512"') && markSvg({ size: 16 }).includes('width="16"'));
-ok('has an accessible title', bare.includes('<title>Swarmsmith</title>') && bare.includes('aria-label'));
+ok('has an accessible title', bare.includes('<title>Swarmcraft</title>') && bare.includes('aria-label'));
 ok('is a single path plus a cursor', (bare.match(/<path /g) ?? []).length === 2, String((bare.match(/<path /g) ?? []).length));
 ok('uses the one accent on the cursor', bare.includes(MARK_ACCENT));
 ok('the box is not filled', /<path d="M[^"]*" fill="none"/.test(bare), 'a filled box is an app icon, not a mark');

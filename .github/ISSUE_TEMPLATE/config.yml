@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Read the limits first
-    url: https://github.com/mafk21/swarm-builder#known-limits
+    url: https://github.com/mafk21/swarmcraft#known-limits
     about: Free-tier rate limits, no backend, and why the contact form uses mailto.

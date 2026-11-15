@@ -12,7 +12,7 @@ const run = (c) => {
 
 const say = (label, value) => console.log(`  ${label.padEnd(22)} ${value}`);
 
-console.log('\nswarmsmith doctor\n');
+console.log('\nswarmcraft doctor\n');
 
 const head = run('git rev-parse --short=7 HEAD');
 const branch = run('git rev-parse --abbrev-ref HEAD');

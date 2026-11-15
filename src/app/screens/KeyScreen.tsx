@@ -86,7 +86,7 @@ export default function KeyScreen() {
         <p className="eyebrow">Setup</p>
         <h1>{hasKey ? 'Your key is saved' : 'One key, then it works'}</h1>
         <p>
-          Swarmsmith uses your own Google Gemini API key. It is stored in this browser&rsquo;s
+          Swarmcraft uses your own Google Gemini API key. It is stored in this browser&rsquo;s
           IndexedDB and sent only to Google, from this tab. There is no server in between, because
           there is no server at all.
         </p>

@@ -4,7 +4,7 @@
 
 A working knowledge base for building, shipping, and maintaining a Chrome extension in 2026 — covering the runtime model, the APIs you'll actually use, the failure modes that bite everyone, AI/agent integration, packaging, distribution, and Chrome Web Store review.
 
-> **Scope note.** You said swarm-builder is "an extension on Google." This document assumes that means a **Chrome browser extension** (Manifest V3). If you actually meant a **Google Workspace Add-on** (the kind that appears inside Gmail/Docs/Sheets) or a **Google Docs add-on**, those are a completely different platform built on Apps Script — see [§1.3](#13-what-it-is-not-workspace-add-ons) for how they differ, and tell me so I can write the right guide.
+> **Scope note.** You said swarmcraft is "an extension on Google." This document assumes that means a **Chrome browser extension** (Manifest V3). If you actually meant a **Google Workspace Add-on** (the kind that appears inside Gmail/Docs/Sheets) or a **Google Docs add-on**, those are a completely different platform built on Apps Script — see [§1.3](#13-what-it-is-not-workspace-add-ons) for how they differ, and tell me so I can write the right guide.
 
 ---
 
@@ -29,7 +29,7 @@ A working knowledge base for building, shipping, and maintaining a Chrome extens
 17. [Chrome Web Store: registration → review](#17-chrome-web-store-registration--review)
 18. [Monetization](#18-monetization)
 19. [Performance, cost, and reliability pitfalls](#19-performance-cost-and-reliability-pitfalls)
-20. [A build order for swarm-builder](#20-a-build-order-for-swarm-builder)
+20. [A build order for swarmcraft](#20-a-build-order-for-swarmcraft)
 21. [Glossary](#21-glossary)
 
 ---
@@ -175,7 +175,7 @@ A complete, realistic MV3 manifest:
 ```json
 {
   "manifest_version": 3,
-  "name": "Swarmsmith",
+  "name": "Swarmcraft",
   "version": "1.0.0",
   "description": "Coordinate a swarm of agents on the current page.",
   "minimum_chrome_version": "120",
@@ -185,7 +185,7 @@ A complete, realistic MV3 manifest:
 
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Swarmsmith",
+    "default_title": "Swarmcraft",
     "default_icon": { "16": "icons/16.png", "32": "icons/32.png" }
   },
 
@@ -559,7 +559,7 @@ Mitigations that actually help:
 
 ## 12. Agentic extensions and "swarms"
 
-If swarmsmith means "orchestrate many agents in the browser," this is the section that matters most. MV3 is a *hostile* environment for a naive swarm: the orchestrator can be killed at any moment, and there is one worker, not many loops.
+If swarmcraft means "orchestrate many agents in the browser," this is the section that matters most. MV3 is a *hostile* environment for a naive swarm: the orchestrator can be killed at any moment, and there is one worker, not many loops.
 
 ### 12.1 Reference architecture
 
@@ -636,7 +636,7 @@ Practical notes:
 - **Group tabs per client** so multiple agents don't collide, and clean up on disconnect.
 - **Never auto-grant.** Every tool call that mutates the outside world should be visible in the UI and revocable.
 
-This same bridge shape is how you'd expose swarmsmith to both an in-browser UI *and* external agents.
+This same bridge shape is how you'd expose swarmcraft to both an in-browser UI *and* external agents.
 
 ---
 
@@ -654,7 +654,7 @@ This same bridge shape is how you'd expose swarmsmith to both an in-browser UI *
 
 **Recommendation for a new project in 2026:** **WXT + TypeScript + React** for the side panel. It gives fast HMR, multi-browser output, and doesn't lock you into abstractions you'll fight later. Choose CRXJS instead if you already have a Vite app and want minimal abstraction. Choose Plasmo only if content-script React UI with Shadow DOM isolation is the centerpiece and you're comfortable with a slower-maintained toolchain.
 
-### 14.2 Suggested stack for swarmsmith
+### 14.2 Suggested stack for swarmcraft
 
 ```
 WXT 1.x            build + manifest generation
@@ -755,7 +755,7 @@ You cannot click the toolbar icon (it's browser chrome, not page content). Open 
 
 `manifest.json`:
 ```json
-{ "update_url": "https://cdn.example.com/swarmsmith/updates.xml" }
+{ "update_url": "https://cdn.example.com/swarmcraft/updates.xml" }
 ```
 
 `updates.xml` — served by your server; `appid` must match the extension ID exactly, and `version` must be higher than the installed one:
@@ -763,7 +763,7 @@ You cannot click the toolbar icon (it's browser chrome, not page content). Open 
 <?xml version='1.0' encoding='UTF-8'?>
 <gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'>
   <app appid='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'>
-    <updatecheck codebase='https://cdn.example.com/swarmsmith/1.0.1.crx' version='1.0.1'/>
+    <updatecheck codebase='https://cdn.example.com/swarmcraft/1.0.1.crx' version='1.0.1'/>
   </app>
 </gupdate>
 ```
@@ -772,7 +772,7 @@ Serve the `.crx` as `Content-Type: application/x-chrome-extension`, support rang
 
 Force-install via policy (`ExtensionInstallForcelist` / `ExtensionSettings`):
 ```
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;https://cdn.example.com/swarmsmith/updates.xml
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;https://cdn.example.com/swarmcraft/updates.xml
 ```
 
 ### 16.3 Versioning
@@ -891,7 +891,7 @@ This is where most first submissions stall. You must declare, accurately:
 
 ---
 
-## 20. A build order for swarm-builder
+## 20. A build order for swarmcraft
 
 A pragmatic sequence that ships something real early and defers review risk:
 
