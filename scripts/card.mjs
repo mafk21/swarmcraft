@@ -24,7 +24,17 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 
-import { CARDS, CARD_NAMES, CARD_RENDERERS, CARD_W, CARD_H, CARD_FONTS, CARD_FONT_DIRS } from './lib/story-cards.mjs';
+import {
+  CARDS,
+  CARD_NAMES,
+  CARD_RENDERERS,
+  CARD_W,
+  CARD_H,
+  SOCIAL_W,
+  SOCIAL_H,
+  CARD_FONTS,
+  CARD_FONT_DIRS,
+} from './lib/story-cards.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const MEDIA = join(ROOT, 'docs', 'media');
@@ -61,7 +71,7 @@ async function main() {
   if (CHECK_ONLY) {
     console.log(`  fonts     ${faces.length} bundled faces found`);
     console.log(`  cards     ${names.join(', ')}`);
-    console.log(`  size      ${CARD_W}×${CARD_H} → docs/media/story-<name>.png`);
+    console.log(`  size      ${CARD_W}×${CARD_H} stories, ${SOCIAL_W}×${SOCIAL_H} social → docs/media/story-<name>.png`);
     console.log('\n  CHECKS PASSED — run without --check to render.\n');
     return 0;
   }
@@ -96,6 +106,9 @@ async function main() {
   }
 
   for (const name of names) {
+    /* The social preview is a different shape on purpose: 1280×640 is what a
+       link preview shows, and it is also GitHub's upload limit. */
+    const [W, H] = name === 'social' ? [SOCIAL_W, SOCIAL_H] : [CARD_W, CARD_H];
     /* The poster is a different composition, not a different template: no
        proofs, no bullet list, one claim and the sheet of paper it is about. */
     const svg = CARD_RENDERERS[name]();
@@ -133,7 +146,7 @@ async function main() {
 
     const pngPath = join(MEDIA, `story-${name}.png`);
     writeFileSync(pngPath, png);
-    console.log(`  ${`story-${name}.png`.padEnd(22)} ${kb(pngPath)}  ${CARD_W}×${CARD_H}`);
+    console.log(`  ${`story-${name}.png`.padEnd(22)} ${kb(pngPath)}  ${W}×${H}`);
   }
 
   console.log('\n  CARDS OK\n');

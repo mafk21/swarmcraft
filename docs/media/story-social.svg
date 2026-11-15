@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <pattern id="graticule" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0 H0 V32" fill="none" stroke="#f5f3ef" stroke-opacity="0.022" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1280" height="640" fill="#0b0b0c"/>
+  <rect width="1280" height="640" fill="url(#graticule)"/>
+
+  <text x="72" y="96" font-family="JetBrains Mono" font-size="17" letter-spacing="5" fill="#8a8780">SWARMCRAFT · A WEBSITE BUILDER THAT DRAWS</text>
+  <line x1="72" y1="122" x2="1208" y2="122" stroke="#2b2b30"/>
+
+  <text x="68" y="266" font-family="Instrument Serif" font-size="104" fill="#f5f3ef">Write a brief.</text>
+  <text x="68" y="374" font-family="Instrument Serif" font-size="104" fill="#f5f3ef">Nine cursors</text>
+  <text x="68" y="482" font-family="Instrument Serif" font-size="104" font-style="italic" fill="#ff9548">draw it.</text>
+
+  <text x="72" y="540" font-family="JetBrains Mono" font-size="22" fill="#f5f3ef">github.com/mafk21/swarmcraft</text>
+  <text x="72" y="580" font-family="JetBrains Mono" font-size="15" letter-spacing="3" fill="#5d5b55">ONE REQUEST · 80 SECONDS · NO BACKEND · MIT</text>
+
+  
+  <g>
+    <rect x="706" y="152" width="470" height="372" rx="7" fill="#111113" stroke="#2b2b30"/>
+    <path d="M713 152 h456 a7 7 0 0 1 7 7 v22 h-470 v-22 a7 7 0 0 1 7-7 z" fill="#171719"/>
+    <line x1="706" y1="181" x2="1176" y2="181" stroke="#1f1f23"/>
+    <text x="736" y="171" font-family="JetBrains Mono" font-size="13" fill="#8a8780">falconroasters.sa</text>
+
+    <text x="736" y="248" font-family="Instrument Serif" font-size="40" fill="#f5f3ef">Roasted on</text>
+    <text x="736" y="292" font-family="Instrument Serif" font-size="40" fill="#f5f3ef">Tuesday</text>
+    <rect x="884.6" y="262" width="3" height="34" fill="#5b8cff"/>
+
+    <line x1="736" y1="324" x2="1146" y2="324" stroke="#1f1f23"/>
+
+    
+    <text x="736" y="366" font-family="Instrument Sans" font-size="18" fill="#b6b3ac">Espresso Roast</text>
+    <text x="1146" y="366" text-anchor="end" font-family="JetBrains Mono" font-size="16" fill="#8a8780">SAR 65</text>
+    <line x1="736" y1="381" x2="1146" y2="381" stroke="#1f1f23" opacity="0.7"/>
+    <text x="736" y="414" font-family="Instrument Sans" font-size="18" fill="#b6b3ac">Filter Papers</text>
+    <text x="1146" y="414" text-anchor="end" font-family="JetBrains Mono" font-size="16" fill="#8a8780">SAR 12</text>
+    <line x1="736" y1="429" x2="1146" y2="429" stroke="#1f1f23" opacity="0.7"/>
+
+    <!-- the card being stamped, two corners still open -->
+    <rect x="736" y="440" width="186" height="58" rx="4" fill="#1d1d21" stroke="#383840" stroke-dasharray="6 5"/>
+    <text x="829" y="474" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="#b6b3ac">186 × 58</text>
+
+    <!-- the corner still being dragged, and the handle on it -->
+    <path d="M1102 524 h54" stroke="#5b8cff" stroke-width="2.5" stroke-linecap="round"/>
+    <rect x="1152" y="519" width="10" height="10" fill="#5b8cff"/>
+
+    
+    <g transform="translate(1171.3 520.28) scale(1.4166666666666667)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#5b8cff" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(800 189.2) scale(1.25)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#3dd68c" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(997.4 338) scale(1.25)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#f0a92e" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(734.2 419.84) scale(1.25)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#a97bff" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(1110.2 315.68) scale(1.25)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#35c6dd" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+  </g>
+</svg>
