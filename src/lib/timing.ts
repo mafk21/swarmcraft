@@ -68,3 +68,56 @@ export function planAnimation(
     expectedMs: swarmMs / speed,
   };
 }
+
+/* ── the progress rail ───────────────────────────────────────────────────────
+   Two real scales, one bar.
+
+   The rail used to show `progress`, which is 0 for the whole time the model is
+   writing — most of most builds — and then jumps. The alternative everyone
+   reaches for is a bar that fills on a timer regardless of what is happening,
+   which is a spinner wearing a progress bar's clothes. These two functions are
+   the honest version, and they live here so the screen and rail-test.mjs are
+   provably talking about the same arithmetic.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * How much of the build budget has been spent waiting for the model.
+ *
+ * The request either answers or it doesn't; there is no percentage of a network
+ * call. This is the one true thing available while it runs: the clock.
+ */
+export function writeShare(elapsedMs: number, budgetMs: number): number {
+  if (!Number.isFinite(budgetMs) || budgetMs <= 0) return 0;
+  if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) return 0;
+  return Math.min(1, elapsedMs / budgetMs);
+}
+
+/**
+ * How much of the page has been drawn, measured by area.
+ *
+ * The swarm works down the page, so "the sections at or above the one being
+ * worked on" is a real answer rather than a guess. Shares come from the
+ * blueprint, so a tall hero moves the bar more than a thin footer — which is
+ * what a person watching would expect.
+ */
+export function drawShare(
+  sections: { index: number; share: number }[],
+  workingOn: number | null,
+  progress: number
+): number {
+  if (!sections.length) return 0;
+  const total = sections.reduce((n, s) => n + Math.max(0, s.share), 0);
+  if (!(total > 0)) return 0;
+
+  /* Finished is finished: rounding in the measured shares must not leave the
+     rail a pixel short on a completed build. */
+  if (progress >= 0.999) return 1;
+
+  /* No cursor is in a section yet — before the work starts. Claim nothing. */
+  if (workingOn === null) return progress > 0.98 ? 1 : 0;
+
+  const done = sections
+    .filter((s) => s.index <= workingOn)
+    .reduce((n, s) => n + Math.max(0, s.share), 0);
+  return Math.min(1, done / total);
+}

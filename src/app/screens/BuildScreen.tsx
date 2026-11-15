@@ -10,7 +10,7 @@ import { StageClock } from '../StageClock';
 import { armDeadline, clearDeadline } from '../../lib/deadline';
 import { THEMES } from '../../lib/themes';
 import { SECTION_LABEL } from '../../lib/spec';
-import { planAnimation } from '../../lib/timing';
+import { planAnimation, writeShare, drawShare } from '../../lib/timing';
 
 /** The width the preview stage will really be, so measurements match the reveal. */
 function stageWidth() {
@@ -98,6 +98,13 @@ export default function BuildScreen() {
   /** how many pieces have landed, and how many there are to land */
   const [landed, setLanded] = useState(0);
   const landedTotal = summary ? summary.boxes + summary.lines + summary.texts : 0;
+  /** real ms since the request went out, for the rail's honest first half */
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const runStartRef = useRef(0);
+  /** how far the rail had got when the model finished — it must never go back */
+  const writeEndRef = useRef(0);
+  /** true while the screen is showing a replay rather than the paid build */
+  const replayRef = useRef(false);
   const [speed, setSpeed] = useState(1);
   const [paused, setPaused] = useState(false);
   const [live, setLive] = useState(false);
@@ -111,6 +118,21 @@ export default function BuildScreen() {
   // whole pipeline (and pay for two Gemini calls) in development
   const ranFor = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  /* The rail's first half is a real clock, so something has to hold the clock.
+     Four updates a second: smooth enough to read, cheap enough to ignore. */
+  useEffect(() => {
+    if (phase === 'done' || phase === 'failed' || phase === 'building') {
+      /* the swarm reports its own progress from here, and it does it per frame */
+      writeEndRef.current = writeEndRef.current || elapsedMs;
+      return;
+    }
+    if (phase === 'writing') runStartRef.current = performance.now();
+    const id = window.setInterval(() => {
+      setElapsedMs(performance.now() - runStartRef.current);
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [phase]);
 
   /* ── the whole pipeline, once ─────────────────────────────────────────── */
   useEffect(() => {
@@ -278,7 +300,8 @@ export default function BuildScreen() {
         finalSpec.sections.forEach((sec, i) => {
           labels[i] = SECTION_LABEL[sec.type];
         });
-        setSummary(summariseBlueprint(bp, labels));
+        const measured = summariseBlueprint(bp, labels);
+        setSummary(measured);
         setLanded(0);
 
         /* Keep it now, and not a line earlier.
@@ -480,6 +503,7 @@ export default function BuildScreen() {
   }
 
   function replay() {
+    replayRef.current = true;
     setLive(false);
     setProgress(0);
     setPaused(false);
@@ -557,6 +581,21 @@ export default function BuildScreen() {
     );
   }
 
+  /* ── the rail ─────────────────────────────────────────────────────────── */
+  const writeProgress = writeShare(elapsedMs, BUDGET_MS);
+  const drawn = drawShare(summary?.sections ?? [], workingOn, progress);
+
+  /* One bar, two honest scales. While the model writes it shows the real
+     elapsed share of the budget; once the page is measured the only progress
+     that means anything is how much of it has been drawn. It never goes
+     backwards, and on a replay it shows the drawing alone. */
+  const railShare =
+    phase === 'done'
+      ? 1
+      : phase === 'building'
+        ? Math.max(replayRef.current ? 0 : writeEndRef.current / BUDGET_MS, drawn)
+        : writeProgress;
+
   const working = phase !== 'done';
   const statusText =
     phase === 'writing'
@@ -573,14 +612,14 @@ export default function BuildScreen() {
     <div className="screen">
       <div className="build-wrap">
         <div className="rail">
-          <i style={{ width: `${Math.round(progress * 100)}%` }} />
+          <i style={{ width: `${Math.round(railShare * 100)}%` }} />
         </div>
 
         {/* What is being drawn, measured — not claimed.
             Every figure here comes from the blueprint: the page was rendered,
             measured, and these are its real counts. The caption names the
             section the swarm is actually inside right now. */}
-        {summary && phase !== 'done' && (
+        {summary && phase !== 'done' && (landed > 0 || workingOn !== null) && (
           <div className="build-stats">
             <span className="stat">
               <b>{summary.sections.length}</b> sections

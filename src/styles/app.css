@@ -658,6 +658,9 @@
 
 .build-stats .stat {
   white-space: nowrap;
+  /* the counters change every few hundred ms while a box lands; proportional
+     digits make the whole row twitch, tabular ones do not */
+  font-variant-numeric: tabular-nums;
 }
 
 .build-stats b {
@@ -686,6 +689,13 @@
 @keyframes hud-pulse {
   50% {
     opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .build-stats,
+  .build-stats .stat-live i {
+    animation: none;
   }
 }
 
