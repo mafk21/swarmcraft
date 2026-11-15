@@ -69,8 +69,9 @@ key** → copy it → paste it into the first screen of the app. No card, no bil
 
 The app tests the key by asking it to write a sentence, so a key that cannot build a
 page is refused there and then rather than thirty seconds into your first build. It is
-stored in your browser's IndexedDB and sent to Google and nowhere else. You can
-replace or forget it later from the same screen.
+stored in your browser's IndexedDB — or, if the browser refuses that, in a folder
+you pick, as plain JSON — and sent to Google and nowhere else. You can replace or
+forget it later from the same screen.
 
 **3 · Build something**
 
@@ -181,10 +182,12 @@ watchdog, and a module-level timer no unmount can cancel.
 
 ## What it does not do
 
-- **No backend.** Sites live in this browser's IndexedDB. Nothing syncs, nothing is
-  backed up. Export what you want to keep.
+- **No backend.** Sites live in this browser's IndexedDB, or in a folder you choose
+  when the browser blocks its own storage. Nothing syncs and nothing is backed up —
+  a folder is a folder, not a backup. Export what you want to keep.
 - **No CSS from the model** — see above. This is a feature; it is also a limit.
-- **No Safari or Firefox.** Saving needs the File System Access API.
+- **No Safari.** Saving needs IndexedDB, and the folder fallback needs the File
+  System Access API. Firefox works; Safari has neither waiting for it.
 - **No pretending about the contact form.** It opens your visitor's mail app,
   because there is no server to receive a message.
 - **Free-tier keys throttle.** Flash gives roughly 20 requests a day; the app falls

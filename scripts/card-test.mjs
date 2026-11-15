@@ -11,6 +11,17 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+
+/* The repo this card advertises, taken from package.json's repository field.
+   It used to be written as a literal here AND in story-cards.mjs, so the rename
+   to swarmcraft broke four assertions and would have been missed entirely if the
+   literals had agreed with each other and disagreed with the repo. One source. */
+const REPO = (() => {
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const url = String(pkg.repository?.url ?? '').replace(/^git\+/, '').replace(/\.git$/, '');
+  const m = url.match(/github\.com\/([^/]+\/[^/]+)/);
+  return m ? `github.com/${m[1]}` : 'github.com/mafk21/swarmcraft';
+})();
 import { renderCardSvg, wrap, measure, CARDS, CARD_NAMES, CARD_RENDERERS, CARD_W, CARD_H, CARD_FONTS, CARD_FONT_DIRS } from './lib/story-cards.mjs';
 
 let fail = 0;
@@ -34,7 +45,7 @@ for (const [name, card] of Object.entries(CARDS)) {
   ok(`${name}: has a claim`, card.claim.trim().length > 8);
   ok(`${name}: claim is at most two lines`, card.claim.split('\n').length <= 2);
   ok(`${name}: has three proofs`, card.proof.length === 3, String(card.proof.length));
-  ok(`${name}: points at the repo`, /github\.com\/mafk21\/swarm-builder/.test(card.cta.label));
+  ok(`${name}: points at the repo`, card.cta.label.includes(REPO));
   ok(`${name}: every claim is checkable`, card.proof.every((p) => p.length < 44), 'a proof that needs a sentence is not a proof');
 }
 
@@ -47,7 +58,7 @@ for (const [name, card] of Object.entries(CARDS)) {
   ok(`${name}: is 1080×1920`, CARD_W === 1080 && CARD_H === 1920 && svg.includes(`width="${CARD_W}" height="${CARD_H}"`));
   ok(`${name}: names the three bundled families`, ['Instrument Serif', 'Instrument Sans', 'JetBrains Mono'].every((f) => svg.includes(`font-family="${f}"`)));
   ok(`${name}: the claim is on the card`, svg.includes(card.claim.split('\n')[0].split(' ')[0]));
-  ok(`${name}: the url is on the card`, svg.includes('github.com/mafk21/swarm-builder'));
+  ok(`${name}: the url is on the card`, svg.includes(REPO));
   ok(`${name}: nine cursors`, (svg.match(/<path d="M3 2 L3 19/g) ?? []).length === 9, String((svg.match(/<path d="M3 2 L3 19/g) ?? []).length));
   ok(`${name}: every cursor has its own colour`, new Set([...svg.matchAll(/fill="(#[0-9a-f]{6})" stroke="#0b0b0c"/g)].map((m) => m[1])).size === 9);
   ok(`${name}: no external request`, !/href="https?:|xlink:href/.test(svg), 'a card must render offline');
@@ -99,6 +110,38 @@ ok('wrap never loses a word', wrap('alpha beta gamma', 30, 1000, 'sans').join(' 
 ok('wrap breaks a single over-long word rather than overflowing', wrap('averyveryverylongwordthatcannotfit', 40, 60, 'sans').length >= 1);
 ok('wrap of empty text yields one empty line', wrap('', 30, 300).length === 1);
 ok('measure grows with size', measure('abc', 20) < measure('abc', 40));
+
+
+/* ── the card cannot disagree with the repo it advertises ──────────────────
+   Two things shipped wrong and survived a full green suite, because a card is a
+   PNG and nothing was reading it: the URL said swarm-builder for two commits
+   after the rename, and "27 test suites" stayed 27 while the suite grew.
+
+   The count is derived from package.json now, and this asserts the derived value
+   reaches the artwork — otherwise suiteCount() could return 0 and the card would
+   say "0 test suites" with exactly the same confidence. */
+{
+  const expected = (String(JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).scripts?.test ?? '')
+    .match(/node scripts\/[a-z-]+-test\.mjs/g) ?? []).length;
+
+  for (const name of ['story-launch', 'story-guarantee']) {
+    const svg = readFileSync(new URL(`../docs/media/${name}.svg`, import.meta.url), 'utf8');
+    ok(`${name}: no stale repo url`, !svg.includes('swarm-builder'));
+    ok(`${name}: names the real repo`, svg.includes(REPO));
+    /* Only the cards that quote a count are held to it. Asserting every card
+       carries one would force a figure onto the launch poster that it does not
+       have and does not need. */
+    if (svg.includes('test suites')) {
+      ok(`${name}: quotes the real suite count`, svg.includes(`${expected} test suites`), `expected ${expected}`);
+    }
+  }
+
+  /* The guarantee card's sub-line said the spec has "no field for a colour, a
+     size or a class" while the drawing beside it names className and css. A
+     poster that contradicts its own picture is worse than a plain one. */
+  const g = readFileSync(new URL('../docs/media/story-guarantee.svg', import.meta.url), 'utf8');
+  ok('guarantee: does not deny that styling fields exist', !/no field for a colour/i.test(g));
+}
 
 /* ── done ─────────────────────────────────────────────────────────────────── */
 
