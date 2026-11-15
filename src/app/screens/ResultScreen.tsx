@@ -108,7 +108,15 @@ export default function ResultScreen() {
       patch({ projectId: id, saved: true });
       toast(extra.length ? 'Saved the current page.' : 'Saved to this browser.');
     } catch {
-      toast('This browser will not let the site be saved. Export it instead.');
+      /* Say which of the two reasons it is. "Will not let the site be saved" is
+         true but leaves the user with nowhere to go; a missing folder is
+         fixable in one click from Your sites. */
+      const state = useApp.getState();
+      toast(
+        state.storageBlocked && !state.folderMode
+          ? 'No storage: choose a folder on “Your sites”, or export this to a file.'
+          : 'The site could not be written. Export it to a file instead.'
+      );
     }
   }
 

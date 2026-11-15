@@ -62,6 +62,10 @@ type S = {
   error: string | null;
   /** the browser will not give us IndexedDB: work, but do not promise saving */
   storageBlocked: boolean;
+  /** a folder on disk has been adopted as the store (storageBlocked is true) */
+  folderMode: boolean;
+  /** the folder's name, so the app can say where the work is going */
+  folderLabel: string | null;
   busy: boolean;
   /** set when a build is abandoned by a deadline; the build screen renders it
       from the store so a dead component cannot swallow the message */
@@ -98,6 +102,8 @@ const initial = {
   saved: false,
   error: null,
   storageBlocked: false,
+  folderMode: false,
+  folderLabel: null,
   busy: false,
   buildError: null,
   buildErrorRun: -1,

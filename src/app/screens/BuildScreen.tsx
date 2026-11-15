@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp, failBuild } from '../store';
-import { getApiKey, saveProject } from '../../lib/db';
+import { getApiKey, saveProject, usingFolder, folderName } from '../../lib/db';
 import { buildSite, GeminiError, BUDGET_MS, type MuseReport } from '../../lib/gemini';
 import { renderDocument } from '../../lib/render';
 import { snapshotHtml } from '../../lib/blueprint';
@@ -18,6 +18,19 @@ function stageWidth() {
 }
 
 type Phase = 'writing' | 'choosing-theme' | 'measuring' | 'building' | 'done' | 'failed';
+
+/**
+ * The key as typed in this tab, never written anywhere.
+ *
+ * When the browser blocks both IndexedDB and the folder picker, this is the
+ * only place the key can live — and that is still enough to build a site and
+ * export it, which is the whole point of the app. It is memory, it dies with
+ * the tab, and it is never logged.
+ */
+let sessionKey: string | null = null;
+export function rememberKeyForSession(k: string) {
+  sessionKey = k.trim() || null;
+}
 
 /**
  * The last line of defence.
@@ -203,15 +216,24 @@ export default function BuildScreen() {
 
     (async () => {
       try {
-        let key: string | null = null;
+        /* The key only has to be readable from SOMEWHERE — IndexedDB, or the
+           folder the user chose when IndexedDB was refused. Neither is fatal on
+           its own: the session copy is the last resort, so a browser that
+           blocks storage entirely can still build a site and export it. */
+        let key: string | null = sessionKey;
         try {
-          key = await getApiKey();
+          key = (await getApiKey()) ?? sessionKey;
         } catch {
+          /* no store: fall through to the session copy */
+        }
+        if (!key) {
           throw new Error(
-            'This browser is blocking local storage, so the saved key cannot be read. Paste it again on the Connect screen.'
+            'No API key for this build. Go back to Connect and add one — this browser is not letting the app remember it.'
           );
         }
-        if (!key) throw new Error('No API key saved. Go back and add one.');
+        /* The key was typed on the Connect screen; keep it for this tab so a
+           build does not depend on a store that may be refusing writes. */
+        sessionKey = key;
         if (!kind) throw new Error('No site kind chosen.');
 
         /* One deadline for everything from here on. The model gets what is
@@ -315,6 +337,7 @@ export default function BuildScreen() {
            Failure here is not fatal: the page still renders and the result
            screen offers export. */
         let kept = false;
+        let savedTo = '';
         const keep = async () => {
           /* StrictMode runs the pipeline twice in development. The build is
              the same artefact both times, so it is written once. */
@@ -322,6 +345,7 @@ export default function BuildScreen() {
           kept = true;
           try {
             const id = await saveProject(finalSpec, { kind });
+            savedTo = usingFolder() ? `the folder “${folderName()}”` : 'this browser';
             if (!cancelled) patch({ projectId: id, saved: true });
           } catch {
             /* storage refused: the result screen offers export instead */
@@ -377,7 +401,7 @@ export default function BuildScreen() {
             onLand: () => setLanded((n) => n + 1),
             onDone: () => {
               setPhase('done');
-              setNote('Done');
+              setNote(savedTo ? `Saved to ${savedTo}` : 'Done');
               // reveal the real, interactive page underneath
               setTimeout(() => {
                 if (!cancelled) setLive(true);

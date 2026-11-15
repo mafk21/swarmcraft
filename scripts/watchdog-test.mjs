@@ -57,7 +57,12 @@ await build({
         contents: `export function storageAvailable(){return true}
           export class StorageUnavailable extends Error{}
           export async function getApiKey(){return 'FAKE'}
-          export async function getMedia(){return undefined}
+          export const usingFolder = () => false;
+          export const folderName = () => null;
+          export const folderSupported = () => false;
+          export const rememberKeyForSession = () => {};
+          export async function chooseFolder(){ return null; }
+                    export async function getMedia(){return undefined}
           export async function saveProject(){return 'p'} `,
       }));
     },

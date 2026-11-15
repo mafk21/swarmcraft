@@ -89,7 +89,12 @@ await build({
           export function storageAvailable(){return true}
           export class StorageUnavailable extends Error{}
           export async function getApiKey(){return 'FAKE'}
-          export async function getMedia(){return undefined}
+          export const usingFolder = () => false;
+          export const folderName = () => null;
+          export const folderSupported = () => false;
+          export const rememberKeyForSession = () => {};
+          export async function chooseFolder(){ return null; }
+                    export async function getMedia(){return undefined}
           export async function saveProject(spec){
             saves.push({ title: spec && spec.meta && spec.meta.title, afterRender: !!(globalThis.__PIPE__ && globalThis.__PIPE__.rendered) });
             return 'p';
