@@ -21,6 +21,25 @@
        doing the drawing — which is the point of the card.
    ========================================================================== */
 
+import { readFileSync } from 'node:fs';
+
+/**
+ * How many suites `npm test` runs, read from package.json.
+ *
+ * This card used to say "27 test suites" as a string literal. It was true once,
+ * then the suite grew and the picture kept claiming 27 — a number in a
+ * marketing asset that drifts from reality is worse than no number, because it
+ * is checkable and wrong.
+ */
+function suiteCount() {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+    return (String(pkg.scripts?.test ?? '').match(/node scripts\/[a-z-]+-test\.mjs/g) ?? []).length;
+  } catch {
+    return 0;
+  }
+}
+
 export const CARD_W = 1080;
 export const CARD_H = 1920;
 
@@ -80,7 +99,7 @@ export const CARDS = {
     claim: 'Write a brief.\nWatch it get built.',
     sub: 'Nine cursors draw your website — dragging the boxes out, typing the headline, stamping the cards — then the real page fades in underneath.',
     proof: ['One request · 80s hard limit', 'No backend · no account', 'MIT · runs on your machine'],
-    cta: { label: 'github.com/mafk21/swarm-builder', note: 'link in bio' },
+    cta: { label: 'github.com/mafk21/swarmcraft', note: 'link in bio' },
     kicker: 'v0.1',
     art: 'building',
   },
@@ -89,9 +108,9 @@ export const CARDS = {
   guarantee: {
     eyebrow: 'Swarmcraft · the one guarantee',
     claim: 'The model\nnever writes CSS.',
-    sub: 'The spec is strict and has no field for a colour, a size or a class. The worst page it can make is plain — never gradients, never three identical cards.',
-    proof: ['Enforced by the schema', 'Not a prompt request', '27 test suites'],
-    cta: { label: 'github.com/mafk21/swarm-builder', note: 'link in bio' },
+    sub: 'The spec is strict: no field takes a colour, a size, a class or a stylesheet. The model can describe a page and cannot style one — so the worst page it can make is plain, never a gradient, never three identical cards.',
+    proof: ['Enforced by the schema', 'Not a prompt request', `${suiteCount()} test suites`],
+    cta: { label: 'github.com/mafk21/swarmcraft', note: 'link in bio' },
     kicker: 'no slop',
     art: 'schema',
   },
@@ -461,7 +480,7 @@ export function renderPosterSvg() {
   ${sheet}
 
   <line x1="76" y1="1600" x2="1004" y2="1600" stroke="${L2}"/>
-  <text x="76" y="1664" font-family="JetBrains Mono" font-size="29" fill="${T0}">github.com/mafk21/swarm-builder</text>
+  <text x="76" y="1664" font-family="JetBrains Mono" font-size="29" fill="${T0}">github.com/mafk21/swarmcraft</text>
   <text x="1004" y="1664" text-anchor="end" font-family="JetBrains Mono" font-size="21" fill="${T2}">link in bio</text>
   <text x="76" y="1718" font-family="JetBrains Mono" font-size="18" letter-spacing="4" fill="${T3}">NINE CURSORS · ONE REQUEST · 80 SECONDS</text>
   <text x="1004" y="1718" text-anchor="end" font-family="JetBrains Mono" font-size="18" letter-spacing="4" fill="${T3}">MIT</text>
