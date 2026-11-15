@@ -1614,3 +1614,67 @@
   opacity: 0.28;
   cursor: default;
 }
+
+/* ── the device toggle on the result screen ───────────────────────────────
+   Phone is 390px of real layout inside the same iframe, so it is the page at a
+   phone's width rather than a picture of one: media queries fire, the nav
+   collapses, the grid goes to one column. 390 and not 375 because that is the
+   width most phones actually report after the scrollbar. */
+
+.device-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  border: 1px solid var(--l2);
+  border-radius: 4px;
+}
+
+.device-tab {
+  border: 0;
+  background: transparent;
+  color: var(--t2);
+  font: inherit;
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  padding: 4px 9px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.device-tab:hover {
+  color: var(--t0);
+}
+
+.device-tab.on {
+  background: var(--s2);
+  color: var(--t0);
+}
+
+/* the stage centres a phone-width frame on the same dark bench */
+.bench-stage.on-phone {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  overflow: auto;
+  padding: 18px 0;
+}
+
+.bench-stage.on-phone iframe {
+  width: 390px;
+  flex: 0 0 390px;
+  height: 100%;
+  border: 1px solid var(--l2);
+  border-radius: 6px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+@media (max-width: 1000px) {
+  .bench-stage.on-phone iframe {
+    width: 390px;
+    max-width: 100%;
+    height: 60vh;
+  }
+}

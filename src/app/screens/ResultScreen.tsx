@@ -15,6 +15,11 @@ export default function ResultScreen() {
   const { spec, patch, reset, startNew, projectId, saved, kind } = useApp();
   const [note, setNote] = useState<string | null>(null);
   const [focus, setFocus] = useState<{ index: number; nonce: number } | null>(null);
+  /* The preview is the only place the finished page can be seen, and it was
+     always desktop-width. The mobile layout is real — the styleguide checks
+     measure it at 375px — but nobody could look at it without exporting and
+     shrinking their browser. This is that, one click away. */
+  const [device, setDevice] = useState<'desktop' | 'phone'>('desktop');
   const frameRef = useRef<HTMLIFrameElement>(null);
 
   /* pages live beside the spec; page 0 is what `spec` holds */
@@ -282,6 +287,23 @@ export default function ResultScreen() {
             + Page
           </button>
         )}
+
+        <div className="device-tabs" role="group" aria-label="Preview width">
+          <button
+            className={`device-tab${device === 'desktop' ? ' on' : ''}`}
+            aria-pressed={device === 'desktop'}
+            onClick={() => setDevice('desktop')}
+          >
+            Desktop
+          </button>
+          <button
+            className={`device-tab${device === 'phone' ? ' on' : ''}`}
+            aria-pressed={device === 'phone'}
+            onClick={() => setDevice('phone')}
+          >
+            Phone
+          </button>
+        </div>
       </div>
 
       {slop.length > 0 && (
@@ -297,7 +319,7 @@ export default function ResultScreen() {
       )}
 
       <div className="bench">
-        <div className="bench-stage">
+        <div className={`bench-stage on-${device}`}>
           <iframe
             ref={frameRef}
             title={active.meta.title}
