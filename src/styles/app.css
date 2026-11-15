@@ -622,6 +622,88 @@
   transition: width 0.1s linear;
 }
 
+/* ── the build HUD ────────────────────────────────────────────────────────
+   Four measured figures and one live caption. It sits under the progress rail
+   like a status line in a real editor: monospaced, small, quiet, and only there
+   while the page is being drawn. Nothing animates in it — a number that slides
+   around is a number you cannot read. */
+
+.build-stats {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 11px;
+  border-radius: 4px;
+  border: 1px solid var(--l2);
+  background: rgba(12, 13, 15, 0.82);
+  backdrop-filter: blur(6px);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--t2);
+  pointer-events: none;
+  animation: hud-in 0.32s ease both;
+}
+
+@keyframes hud-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.build-stats .stat {
+  white-space: nowrap;
+}
+
+.build-stats b {
+  color: var(--t0);
+  font-weight: 500;
+}
+
+/* the section the cursors are inside — the one live thing in the bar */
+.build-stats .stat-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 14px;
+  border-left: 1px solid var(--l2);
+  color: var(--t0);
+}
+
+.build-stats .stat-live i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--c0);
+  animation: hud-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes hud-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (max-width: 720px) {
+  .build-stats {
+    top: auto;
+    bottom: 56px;
+    right: 10px;
+    left: 10px;
+    justify-content: center;
+    gap: 10px;
+  }
+  /* the counters are the story; the live caption is the first thing to go */
+  .build-stats .stat-live {
+    display: none;
+  }
+}
+
 /* ── result ────────────────────────────────────────────────────────────── */
 
 .result-bar {

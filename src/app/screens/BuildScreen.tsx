@@ -4,11 +4,12 @@ import { getApiKey, saveProject } from '../../lib/db';
 import { buildSite, GeminiError, BUDGET_MS, type MuseReport } from '../../lib/gemini';
 import { renderDocument } from '../../lib/render';
 import { snapshotHtml } from '../../lib/blueprint';
-import { Swarm } from '../../lib/swarm';
+import { Swarm, summariseBlueprint, type BlueprintSummary } from '../../lib/swarm';
 import { BuildSound } from '../../lib/audio';
 import { StageClock } from '../StageClock';
 import { armDeadline, clearDeadline } from '../../lib/deadline';
 import { THEMES } from '../../lib/themes';
+import { SECTION_LABEL } from '../../lib/spec';
 import { planAnimation } from '../../lib/timing';
 
 /** The width the preview stage will really be, so measurements match the reveal. */
@@ -90,6 +91,13 @@ export default function BuildScreen() {
   const [phase, setPhase] = useState<Phase>('writing');
   const [note, setNote] = useState('Reading what you wrote');
   const [progress, setProgress] = useState(0);
+  /** what the measured page actually contains, for the HUD */
+  const [summary, setSummary] = useState<BlueprintSummary | null>(null);
+  /** which section the cursors are inside right now */
+  const [workingOn, setWorkingOn] = useState<number | null>(null);
+  /** how many pieces have landed, and how many there are to land */
+  const [landed, setLanded] = useState(0);
+  const landedTotal = summary ? summary.boxes + summary.lines + summary.texts : 0;
   const [speed, setSpeed] = useState(1);
   const [paused, setPaused] = useState(false);
   const [live, setLive] = useState(false);
@@ -262,6 +270,17 @@ export default function BuildScreen() {
         if (cancelled) return;
         patch({ blueprint: bp });
 
+        /* Name the sections from the spec, in the order they were built, so the
+           HUD can say "Products" instead of "Section 2". If the counts disagree
+           the labels simply do not apply and summariseBlueprint falls back to
+           numbers rather than naming the wrong thing. */
+        const labels: Record<number, string> = {};
+        finalSpec.sections.forEach((sec, i) => {
+          labels[i] = SECTION_LABEL[sec.type];
+        });
+        setSummary(summariseBlueprint(bp, labels));
+        setLanded(0);
+
         /* Keep it now, and not a line earlier.
            A build used to be saved the instant the model answered — before the
            page was rendered or measured — so a build that then failed to
@@ -332,6 +351,7 @@ export default function BuildScreen() {
             speed: buildSpeed,
             hardCapMs: plan.capMs,
             onProgress: (p) => setProgress(p),
+            onLand: () => setLanded((n) => n + 1),
             onDone: () => {
               setPhase('done');
               setNote('Done');
@@ -343,7 +363,17 @@ export default function BuildScreen() {
           });
         });
 
-        return () => window.removeEventListener('resize', onResize);
+        /* The engine knows which section its cursors are inside; React has to
+           ask. Four times a second is enough for a caption and costs nothing. */
+        const watch = window.setInterval(() => {
+          if (cancelled) return;
+          setWorkingOn(swarm.workingSection);
+        }, 250);
+
+        return () => {
+          window.removeEventListener('resize', onResize);
+          window.clearInterval(watch);
+        };
       } catch (e) {
         done = true;
         window.clearTimeout(watchdog);
@@ -539,6 +569,38 @@ export default function BuildScreen() {
         <div className="rail">
           <i style={{ width: `${Math.round(progress * 100)}%` }} />
         </div>
+
+        {/* What is being drawn, measured — not claimed.
+            Every figure here comes from the blueprint: the page was rendered,
+            measured, and these are its real counts. The caption names the
+            section the swarm is actually inside right now. */}
+        {summary && phase !== 'done' && (
+          <div className="build-stats">
+            <span className="stat">
+              <b>{summary.sections.length}</b> sections
+            </span>
+            <span className="stat">
+              <b>{summary.boxes}</b> boxes
+            </span>
+            <span className="stat">
+              <b>{summary.lines}</b> rules
+            </span>
+            <span className="stat">
+              <b>{summary.chars.toLocaleString()}</b> characters
+            </span>
+            {landedTotal > 0 && (
+              <span className="stat">
+                <b>{Math.min(landed, landedTotal)}</b>/{landedTotal} landed
+              </span>
+            )}
+            {workingOn !== null && summary.sections.some((s) => s.index === workingOn) && (
+              <span className="stat stat-live">
+                <i />
+                {summary.sections.find((s) => s.index === workingOn)?.name}
+              </span>
+            )}
+          </div>
+        )}
 
         <canvas ref={canvasRef} className="build-canvas" />
         <iframe
