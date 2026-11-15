@@ -291,5 +291,116 @@ for (const k of ['store', 'restaurant', 'portfolio', 'landing', 'custom']) {
   ok(`${k}: no placeholder junk leaks in`, !/undefined|\[object Object\]/.test(text));
 }
 
+/* ── a multi-page answer is still one request, with its links wired ────────
+   The brief promised "one generation call". Returning sub-pages must not turn
+   into a second call per page, and a page the model linked to but did not
+   return must not leave a link pointing at nothing. */
+{
+  let requests = 0;
+  const home = {
+    meta: { title: 'Kiln', description: 'Pots.', theme: 'warm', accent: 'clay' },
+    nav: { brand: 'Kiln', links: [{ label: 'Shop', href: 'page:1' }] },
+    sections: [
+      { type: 'hero', headline: 'Pots that get used', sub: 'Stoneware.' },
+      { type: 'features', heading: 'Making', items: [
+        { title: 'A', body: 'B' }, { title: 'C', body: 'D' }, { title: 'E', body: 'F' }] },
+      { type: 'contact', heading: 'Write', email: 'a@b.co', form: true },
+    ],
+    footer: { note: 'Kiln' },
+    voice: { register: 'Plain', facts: [] },
+  };
+  const shop = {
+    meta: { title: 'Shop', description: 'Every pot.', theme: 'brutalist', accent: 'sand' },
+    nav: { brand: 'Whatever', links: [{ label: 'Our story', href: 'page:2' }] },
+    sections: [
+      { type: 'hero', headline: 'Shop', sub: 'In stock.' },
+      { type: 'products', heading: 'Stock', items: [
+        { name: 'Mug', price: '12' }, { name: 'Bowl', price: '20' }, { name: 'Jug', price: '28' }] },
+      { type: 'contact', heading: 'Write', email: 'a@b.co', form: false },
+    ],
+    footer: { note: 'Kiln' },
+    voice: { register: 'Plain', facts: [] },
+  };
+
+  globalThis.fetch = async () => {
+    requests++;
+    return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ ...home, pages: [shop] }) }] } }] }) };
+  };
+
+  const out = await buildSite('k', 'store', { name: 'X', prompt: 'a pottery shop with a catalogue page' }, { deadline: Date.now() + 60_000 });
+  ok('sub-pages cost no extra request', requests === 1, `${requests} requests`);
+  ok('the sub-page comes back', out.pages.length === 1 && out.pages[0].meta.title === 'Shop', `${out.pages.length} page(s)`);
+  ok('it is a real page, with sections', (out.pages[0]?.sections.length ?? 0) === 3, String(out.pages[0]?.sections.length));
+  /* the site's own theme wins, so one site is not three costumes */
+  ok('a sub-page takes the home theme', out.pages[0]?.meta.theme === 'warm', String(out.pages[0]?.meta.theme));
+  ok('and the home brand', out.pages[0]?.nav.brand === 'Kiln', String(out.pages[0]?.nav.brand));
+  /* the model linked to page:2, which it never sent: that link must be gone */
+  ok('a link to a page that was never sent is dropped',
+    !out.pages[0].nav.links.some((l) => l.href === 'page:2'), JSON.stringify(out.pages[0].nav.links));
+  ok('the wired page can get home', out.pages[0].nav.links.some((l) => l.href === 'page:0'), JSON.stringify(out.pages[0].nav.links));
+  ok('home links to the sub-page', out.spec.nav.links.some((l) => l.href === 'page:1'), JSON.stringify(out.spec.nav.links));
+}
+
+/* ── one page stays one page ────────────────────────────────────────────────
+   Most briefs are one page, and a build must not invent a second one. */
+{
+  const single = {
+    meta: { title: 'Kiln', description: 'Pots.', theme: 'warm', accent: 'clay' },
+    nav: { brand: 'Kiln', links: [] },
+    sections: [
+      { type: 'hero', headline: 'Pots', sub: 'Stoneware.' },
+      { type: 'about', heading: 'Us', body: ['Two people.'] },
+      { type: 'contact', heading: 'Write', email: 'a@b.co', form: true },
+    ],
+    footer: { note: 'Kiln' },
+    voice: { register: 'Plain', facts: [] },
+  };
+  globalThis.fetch = async () => ({
+    ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(single) }] } }] }),
+  });
+  const out = await buildSite('k', 'landing', { name: 'X' }, { deadline: Date.now() + 60_000 });
+  ok('a one-page answer makes no sub-pages', out.pages.length === 0, `${out.pages.length}`);
+  ok('and its nav is left alone', out.spec.nav.links.length === 0, JSON.stringify(out.spec.nav.links));
+}
+
+/* ── a broken sub-page does not cost the home page ──────────────────────────
+   "pages" is an optional extra. Anything wrong with it is the sub-pages' loss
+   and can never be the reason a build fails. */
+{
+  const home = {
+    meta: { title: 'Kiln', description: 'Pots.', theme: 'warm', accent: 'clay' },
+    nav: { brand: 'Kiln', links: [] },
+    sections: [
+      { type: 'hero', headline: 'Pots', sub: 'Stoneware.' },
+      { type: 'about', heading: 'Us', body: ['Two people.'] },
+      { type: 'contact', heading: 'Write', email: 'a@b.co', form: true },
+    ],
+    footer: { note: 'Kiln' },
+    voice: { register: 'Plain', facts: [] },
+  };
+  globalThis.fetch = async () => ({
+    ok: true, status: 200, json: async () => ({
+      candidates: [{ content: { parts: [{ text: JSON.stringify({ ...home, pages: [{ meta: { title: 'Half' } }, 'nonsense', null, shopish()] }) }] } }],
+    }),
+  });
+  function shopish() {
+    return {
+      meta: { title: 'Real', description: 'Fine.', theme: 'warm', accent: 'clay' },
+      nav: { brand: 'Kiln', links: [] },
+      sections: [
+        { type: 'hero', headline: 'Real', sub: 'A page.' },
+        { type: 'about', heading: 'Us', body: ['Two people.'] },
+        { type: 'contact', heading: 'Write', email: 'a@b.co', form: false },
+      ],
+      footer: { note: 'Kiln' },
+      voice: { register: 'Plain', facts: [] },
+    };
+  }
+  const out = await buildSite('k', 'store', { name: 'X' }, { deadline: Date.now() + 60_000 });
+  ok('the home page survives broken sub-pages', out.spec.meta.title === 'Kiln', out.spec.meta.title);
+  ok('only the valid sub-page is kept', out.pages.length === 1 && out.pages[0].meta.title === 'Real', out.pages.map((p) => p.meta.title).join(' | '));
+  ok('the dropped one is reported', out.repairs.some((r) => /sub-page/i.test(r)), JSON.stringify(out.repairs));
+}
+
 console.log(fail === 0 ? '\nBUDGET OK' : `\n${fail} FAILED`);
 process.exit(fail ? 1 : 0);

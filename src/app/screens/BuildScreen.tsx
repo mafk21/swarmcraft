@@ -3,6 +3,7 @@ import { useApp, failBuild } from '../store';
 import { getApiKey, saveProject, usingFolder, folderName } from '../../lib/db';
 import { buildSite, GeminiError, BUDGET_MS, type MuseReport } from '../../lib/gemini';
 import { renderDocument } from '../../lib/render';
+import { savePages } from '../../lib/pages';
 import { snapshotHtml } from '../../lib/blueprint';
 import { Swarm, summariseBlueprint, type BlueprintSummary } from '../../lib/swarm';
 import { BuildSound } from '../../lib/audio';
@@ -250,7 +251,7 @@ export default function BuildScreen() {
         };
 
         const register = String(answers.tone ?? '');
-        const { spec, repairs } = await buildSite(key, kind, enriched, {
+        const { spec, pages: subPages, repairs } = await buildSite(key, kind, enriched, {
           register,
           wanted: chosenSections,
           onMuse: (r) => setMuses((m) => [...m, r]),
@@ -281,7 +282,11 @@ export default function BuildScreen() {
           };
         }
 
-        patch({ spec: finalSpec });
+        /* The sub-pages go into the store before the page is rendered, so the
+           result screen reads one list from one place. A one-page build clears
+           the list — otherwise "start a new site" would inherit the pages of
+           the last one. */
+        patch({ spec: finalSpec, pages: subPages, saved: false });
 
         /* render the real document */
         /* capture: the swarm is about to take this DOM apart and redraw it with
@@ -345,6 +350,10 @@ export default function BuildScreen() {
           kept = true;
           try {
             const id = await saveProject(finalSpec, { kind });
+            /* Sub-pages are saved WITH the site, not when the user remembers to
+               press save: a build that produced five pages and kept one would
+               be a build that lost four of them to a closed tab. */
+            if (subPages.length) await savePages(id, subPages);
             savedTo = usingFolder() ? `the folder “${folderName()}”` : 'this browser';
             if (!cancelled) patch({ projectId: id, saved: true });
           } catch {
@@ -518,11 +527,14 @@ export default function BuildScreen() {
     /* Skipping is the user saying "I have seen enough — keep it". The page is
        real, so refusing to save it would be the surprising choice. */
     const spec = useApp.getState().spec;
+    const subs = useApp.getState().pages;
     if (spec && !useApp.getState().saved) {
-      void saveProject(spec, { kind }).then(
-        (id) => patch({ projectId: id, saved: true }),
-        () => undefined
-      );
+      void saveProject(spec, { kind }).then(async (id) => {
+        /* skipping must not be the one path that keeps the home page and drops
+           the sub-pages the build just made */
+        if (subs.length) await savePages(id, subs);
+        patch({ projectId: id, saved: true });
+      }, () => undefined);
     }
   }
 

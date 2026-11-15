@@ -9,6 +9,7 @@ import {
   type ProjectRow,
 } from '../../lib/db';
 import { KIND_META } from '../../lib/spec';
+import { loadPages } from '../../lib/pages';
 
 export default function ProjectsScreen() {
   const { patch, startNew, hasKey } = useApp();
@@ -50,9 +51,11 @@ export default function ProjectsScreen() {
     }
   }
 
-  function open(row: ProjectRow) {
+  async function open(row: ProjectRow) {
+    const extra = await loadPages(row.id);
     patch({
       spec: row.spec,
+      pages: extra,
       projectId: row.id,
       saved: true,
       kind: row.kind ?? null,

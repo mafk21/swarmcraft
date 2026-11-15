@@ -2,17 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../store';
 import { renderDocument } from '../../lib/render';
 import { saveProject, inlineMedia } from '../../lib/db';
-import {
-  findSlop,
-  newPage,
-  pageSlug,
-  siteTitle,
-  type SiteSpec,
-} from '../../lib/spec';
+import { findSlop, pageSlug, siteTitle, type SiteSpec } from '../../lib/spec';
+import { blankPage, savePages, wireNav } from '../../lib/pages';
 import Inspector from '../Inspector';
 
 export default function ResultScreen() {
-  const { spec, patch, reset, startNew, projectId, saved, kind } = useApp();
+  const { spec, pages: extra, patch, reset, startNew, projectId, saved, kind } = useApp();
   const [note, setNote] = useState<string | null>(null);
   const [focus, setFocus] = useState<{ index: number; nonce: number } | null>(null);
   /* The preview is the only place the finished page can be seen, and it was
@@ -22,11 +17,24 @@ export default function ResultScreen() {
   const [device, setDevice] = useState<'desktop' | 'phone'>('desktop');
   const frameRef = useRef<HTMLIFrameElement>(null);
 
-  /* pages live beside the spec; page 0 is what `spec` holds */
-  const [extra, setExtra] = useState<SiteSpec[]>([]);
+  /* Pages live in the store now, not in this component: they used to be local
+     state, so a site reopened from "Your sites" came back as its home page and
+     the rest were silently gone. Page 0 is what `spec` holds. */
   const [current, setCurrent] = useState(0);
 
   const pages = useMemo(() => (spec ? [spec, ...extra] : []), [spec, extra]);
+
+  /* A `page:N` link in the preview is a real link. This turns it into a page
+     switch inside the iframe instead of a no-op, which is what it was when
+     resolveHref gave it an "#page-2" the document does not contain. */
+  const goTo = useCallback(
+    (n: number) => {
+      if (!Number.isInteger(n) || n < 0 || n >= pages.length) return;
+      setCurrent(n);
+      setFocus(null);
+    },
+    [pages.length]
+  );
   const active = pages[current] ?? spec;
 
   const html = useMemo(
@@ -53,15 +61,25 @@ export default function ResultScreen() {
     doc.body.style.cursor = 'default';
     doc.addEventListener('click', (e) => {
       const el = (e.target as HTMLElement).closest('[data-sec]');
-      // let real links work
+      /* A link to another page of this site is a real destination, so it
+         switches pages instead of scrolling to an id that is not in this
+         document. Http(s) and mailto links stay theirs and are left alone. */
       const link = (e.target as HTMLElement).closest('a');
-      if (link) return;
+      if (link) {
+        const href = link.getAttribute('href') ?? '';
+        const to = href.match(/^#page-(\d+)$/);
+        if (to) {
+          e.preventDefault();
+          goTo(Number(to[1]));
+        }
+        return;
+      }
       if (!el) return;
       e.preventDefault();
       const idx = Number(el.getAttribute('data-sec'));
       if (Number.isFinite(idx)) setFocus({ index: idx, nonce: Date.now() });
     });
-  }, []);
+  }, [goTo]);
 
   function toast(m: string) {
     setNote(m);
@@ -85,22 +103,31 @@ export default function ResultScreen() {
     if (current === 0) {
       patch({ spec: next, saved: false });
     } else {
-      setExtra((xs) => xs.map((x, i) => (i === current - 1 ? next : x)));
+      patch({
+        pages: extra.map((x, i) => (i === current - 1 ? next : x)),
+        saved: false,
+      });
     }
   }
 
   function addPage() {
     const title = window.prompt('What is this page called?', 'About');
     if (!title) return;
-    const page = newPage(active, title.trim());
-    setExtra((xs) => [...xs, page]);
-    setCurrent(pages.length);
+    /* A new page needs the home page's nav to point at it, or the page exists
+       and nobody can reach it. */
+    const home = pages[0];
+    const next = wireNav([home, ...extra, blankPage(home, title.trim())]);
+    patch({ spec: next[0], pages: next.slice(1), saved: false });
+    setCurrent(next.length - 1);
     toast(`Added "${title.trim()}".`);
   }
 
   function removePage(i: number) {
     if (i === 0) return toast('The home page stays.');
-    setExtra((xs) => xs.filter((_, k) => k !== i - 1));
+    /* Links to the removed page would now land on whatever slid into its slot,
+       so the nav is rewired rather than left pointing at the wrong place. */
+    const next = wireNav([pages[0], ...extra.filter((_, k) => k !== i - 1)]);
+    patch({ spec: next[0], pages: next.slice(1), saved: false });
     setCurrent(0);
     toast('Page removed.');
   }
@@ -109,9 +136,13 @@ export default function ResultScreen() {
 
   async function save() {
     try {
-      const id = await saveProject(active, { id: projectId ?? undefined, kind });
+      /* Save the SITE, not the page you happen to be looking at. This used to
+         save `active`, so editing page 3 and pressing save overwrote the home
+         page of the project with it. */
+      const id = await saveProject(pages[0], { id: projectId ?? undefined, kind });
+      await savePages(id, extra);
       patch({ projectId: id, saved: true });
-      toast(extra.length ? 'Saved the current page.' : 'Saved to this browser.');
+      toast(extra.length ? `Saved all ${pages.length} pages.` : 'Saved to this browser.');
     } catch {
       /* Say which of the two reasons it is. "Will not let the site be saved" is
          true but leaves the user with nowhere to go; a missing folder is
