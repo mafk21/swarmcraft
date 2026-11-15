@@ -8,7 +8,7 @@
   <rect width="1080" height="1920" fill="#0b0b0c"/>
   <rect width="1080" height="1920" fill="url(#graticule)"/>
 
-  <text x="76" y="188" font-family="JetBrains Mono" font-size="22" letter-spacing="6" fill="#8a8780">SWARMSMITH</text>
+  <text x="76" y="188" font-family="JetBrains Mono" font-size="22" letter-spacing="6" fill="#8a8780">SWARMCRAFT</text>
   <line x1="76" y1="216" x2="1004" y2="216" stroke="#2b2b30"/>
 
   <text x="72" y="404" font-family="Instrument Serif" font-size="176" fill="#f5f3ef">Your website,</text>

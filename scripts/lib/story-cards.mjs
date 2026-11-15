@@ -40,6 +40,14 @@ function suiteCount() {
   }
 }
 
+/**
+ * The product's name, read from package.json rather than typed again.
+ *
+ * The poster said SWARMSMITH for months after the rename, and nothing caught it
+ * because a rendered image is not greppable. One source, one spelling.
+ */
+export const BRAND = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).name.toUpperCase();
+
 export const CARD_W = 1080;
 export const CARD_H = 1920;
 
@@ -120,6 +128,7 @@ export const CARD_NAMES = {
   launch: 'the main story — what it is, in one look',
   guarantee: 'the rule — the model never writes CSS',
   poster: 'the story poster — one claim, one sheet of paper, no bullet points',
+  social: 'the 1280×640 link preview — upload it in Settings → Social preview',
 };
 
 /** Names `npm run card` renders, and which renderer each one uses. */
@@ -127,6 +136,8 @@ export const CARD_RENDERERS = {
   launch: () => renderCardSvg(CARDS.launch),
   guarantee: () => renderCardSvg(CARDS.guarantee),
   poster: () => renderPosterSvg(),
+  /** not a story: GitHub's 1280×640 link preview */
+  social: () => renderSocialSvg(),
 };
 
 /* ── text measurement ────────────────────────────────────────────────────────
@@ -470,7 +481,7 @@ export function renderPosterSvg() {
   <rect width="${CARD_W}" height="${CARD_H}" fill="${S0}"/>
   <rect width="${CARD_W}" height="${CARD_H}" fill="url(#graticule)"/>
 
-  <text x="76" y="188" font-family="JetBrains Mono" font-size="22" letter-spacing="6" fill="${T2}">SWARMSMITH</text>
+  <text x="76" y="188" font-family="JetBrains Mono" font-size="22" letter-spacing="6" fill="${T2}">${BRAND}</text>
   <line x1="76" y1="216" x2="1004" y2="216" stroke="${L2}"/>
 
   <text x="72" y="404" font-family="Instrument Serif" font-size="176" fill="${T0}">Your website,</text>
@@ -484,6 +495,92 @@ export function renderPosterSvg() {
   <text x="1004" y="1664" text-anchor="end" font-family="JetBrains Mono" font-size="21" fill="${T2}">link in bio</text>
   <text x="76" y="1718" font-family="JetBrains Mono" font-size="18" letter-spacing="4" fill="${T3}">NINE CURSORS · ONE REQUEST · 80 SECONDS</text>
   <text x="1004" y="1718" text-anchor="end" font-family="JetBrains Mono" font-size="18" letter-spacing="4" fill="${T3}">MIT</text>
+</svg>`;
+}
+
+/* ── the social preview ──────────────────────────────────────────────────────
+   GitHub's social preview is 1280×640 and shows on every link to the repo:
+   Slack, X, WhatsApp, a CV. It is the most-seen picture this project has, and
+   until now there was not one, so the link previewed as a grey rectangle with a
+   truncated README line.
+
+   Not a crop of the story card: 1280×640 is a different shape and a different
+   reading distance. The claim goes left, big; the thing it is about goes right,
+   drawn; the one URL sits under the claim where a preview's eye already is.
+
+   GitHub accepts nothing larger than 1 MB here, so this is rendered at exactly
+   1280×640 rather than drawn huge and scaled down. */
+
+export const SOCIAL_W = 1280;
+export const SOCIAL_H = 640;
+
+export function renderSocialSvg() {
+  /* The sheet: the page being built, at the right, measured off its own box so
+     the cursors land on its edges instead of near them. */
+  const SHEET = { x: 706, y: 152, w: 470, h: 372 };
+  const inner = SHEET.x + 30;
+  const on = (fx, fy, i, size = 30) =>
+    cursor(SHEET.x + SHEET.w * fx, SHEET.y + SHEET.h * fy, i, size);
+
+  const sheet = `
+  <g>
+    <rect x="${SHEET.x}" y="${SHEET.y}" width="${SHEET.w}" height="${SHEET.h}" rx="7" fill="${S1}" stroke="${L2}"/>
+    <path d="M${SHEET.x + 7} ${SHEET.y} h${SHEET.w - 14} a7 7 0 0 1 7 7 v22 h-${SHEET.w} v-22 a7 7 0 0 1 7-7 z" fill="${S2}"/>
+    <line x1="${SHEET.x}" y1="${SHEET.y + 29}" x2="${SHEET.x + SHEET.w}" y2="${SHEET.y + 29}" stroke="${L1}"/>
+    <text x="${inner}" y="${SHEET.y + 19}" font-family="JetBrains Mono" font-size="13" fill="${T2}">falconroasters.sa</text>
+
+    <text x="${inner}" y="${SHEET.y + 96}" font-family="Instrument Serif" font-size="40" fill="${T0}">Roasted on</text>
+    <text x="${inner}" y="${SHEET.y + 140}" font-family="Instrument Serif" font-size="40" fill="${T0}">Tuesday</text>
+    <rect x="${inner + advance('Tuesday', 40, 'serif') + 5}" y="${SHEET.y + 110}" width="3" height="34" fill="${MARK_ACCENT}"/>
+
+    <line x1="${inner}" y1="${SHEET.y + 172}" x2="${SHEET.x + SHEET.w - 30}" y2="${SHEET.y + 172}" stroke="${L1}"/>
+
+    ${[0, 1]
+      .map((i) => {
+        const y = SHEET.y + 214 + i * 48;
+        return `
+    <text x="${inner}" y="${y}" font-family="Instrument Sans" font-size="18" fill="${T1}">${['Espresso Roast', 'Filter Papers'][i]}</text>
+    <text x="${SHEET.x + SHEET.w - 30}" y="${y}" text-anchor="end" font-family="JetBrains Mono" font-size="16" fill="${T2}">${['SAR 65', 'SAR 12'][i]}</text>
+    <line x1="${inner}" y1="${y + 15}" x2="${SHEET.x + SHEET.w - 30}" y2="${y + 15}" stroke="${L1}" opacity="0.7"/>`;
+      })
+      .join('')}
+
+    <!-- the card being stamped, two corners still open -->
+    <rect x="${inner}" y="${SHEET.y + 288}" width="186" height="58" rx="4" fill="${S3}" stroke="${L3}" stroke-dasharray="6 5"/>
+    <text x="${inner + 93}" y="${SHEET.y + 322}" text-anchor="middle" font-family="JetBrains Mono" font-size="13" fill="${T1}">186 × 58</text>
+
+    <!-- the corner still being dragged, and the handle on it -->
+    <path d="M${SHEET.x + SHEET.w - 74} ${SHEET.y + SHEET.h} h54" stroke="${MARK_ACCENT}" stroke-width="2.5" stroke-linecap="round"/>
+    <rect x="${SHEET.x + SHEET.w - 24}" y="${SHEET.y + SHEET.h - 5}" width="10" height="10" fill="${MARK_ACCENT}"/>
+
+    ${on(0.99, 0.99, 0, 34)}
+    ${on(0.2, 0.1, 1)}
+    ${on(0.62, 0.5, 2)}
+    ${on(0.06, 0.72, 3)}
+    ${on(0.86, 0.44, 4)}
+  </g>`;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${SOCIAL_W}" height="${SOCIAL_H}" viewBox="0 0 ${SOCIAL_W} ${SOCIAL_H}">
+  <defs>
+    <pattern id="graticule" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0 H0 V32" fill="none" stroke="#f5f3ef" stroke-opacity="0.022" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="${SOCIAL_W}" height="${SOCIAL_H}" fill="${S0}"/>
+  <rect width="${SOCIAL_W}" height="${SOCIAL_H}" fill="url(#graticule)"/>
+
+  <text x="72" y="96" font-family="JetBrains Mono" font-size="17" letter-spacing="5" fill="${T2}">${BRAND} · A WEBSITE BUILDER THAT DRAWS</text>
+  <line x1="72" y1="122" x2="1208" y2="122" stroke="${L2}"/>
+
+  <text x="68" y="266" font-family="Instrument Serif" font-size="104" fill="${T0}">Write a brief.</text>
+  <text x="68" y="374" font-family="Instrument Serif" font-size="104" fill="${T0}">Nine cursors</text>
+  <text x="68" y="482" font-family="Instrument Serif" font-size="104" font-style="italic" fill="${ACC}">draw it.</text>
+
+  <text x="72" y="540" font-family="JetBrains Mono" font-size="22" fill="${T0}">github.com/mafk21/swarmcraft</text>
+  <text x="72" y="580" font-family="JetBrains Mono" font-size="15" letter-spacing="3" fill="${T3}">ONE REQUEST · 80 SECONDS · NO BACKEND · MIT</text>
+
+  ${sheet}
 </svg>`;
 }
 

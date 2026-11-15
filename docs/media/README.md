@@ -72,15 +72,22 @@ posting to an Instagram or WhatsApp story. It needs no browser — the card is S
 rasterised with `@resvg/resvg-js` — so it runs anywhere, including CI:
 
 ```bash
-npm run card              # both cards
+npm run card              # everything
 npm run card -- launch    # just one
 npm run card -- --check   # check fonts and names, render nothing
 ```
 
-| file | what it says |
-|---|---|
-| `docs/media/story-launch.png` | what the thing is: the claim, a drawing of a page mid-build, three proofs, the repo URL |
-| `docs/media/story-guarantee.png` | the rule: the model never writes CSS |
+| file | size | what it says |
+|---|---|---|
+| `docs/media/story-launch.png` | 1080×1920 | what the thing is: the claim, a drawing of a page mid-build, three proofs, the repo URL |
+| `docs/media/story-guarantee.png` | 1080×1920 | the rule: the model never writes CSS |
+| `docs/media/story-poster.png` | 1080×1920 | one enormous claim, one sheet of paper being dragged, no bullet points |
+| `docs/media/story-social.png` | **1280×640** | the link preview — what shows on Slack, X, WhatsApp, anywhere the repo URL is pasted |
+
+**The social preview is uploaded by hand and cannot be set by the API.** GitHub →
+Settings → Social preview → upload `docs/media/story-social.png`. It must stay under
+1 MB (it is ~77 kB) and be exactly 1280×640; a test asserts both, because GitHub
+rejects the wrong size by silently doing nothing.
 
 Two things about the fonts are worth knowing if you touch the renderer. `resvg`
 ignores woff2 entirely and substitutes a system face without complaining, so the
@@ -98,6 +105,11 @@ typefaces, and the nine real cursor colours doing the drawing.
 The drawing is vector, so it stays sharp at any size. It is deliberately *not* a
 mock screenshot of the product: it is an illustration of the moment, and it is
 labelled as one — if you want the product itself, that is `npm run shots`.
+
+The poster's name is read from `package.json` rather than typed into the drawing: it
+said SWARMSMITH for months after the rename, and nothing caught it because a rendered
+PNG is not greppable. A test now asserts the current name is in every card and the old
+one is in none.
 
 If the copy needs changing, change it in `scripts/lib/story-cards.mjs`; a test
 fails on emoji and on the usual marketing words, so the card cannot slip into the

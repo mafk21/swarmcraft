@@ -235,7 +235,7 @@ There is also a **story card** — a 1080×1920 poster, for posting rather than
 screen-recording:
 
 ```bash
-npm run card                  # docs/media/story-launch.png + story-guarantee.png
+npm run card                  # the story cards, the poster, and the 1280×640 link preview
 npm run card -- --check       # fonts and names only, renders nothing
 ```
 

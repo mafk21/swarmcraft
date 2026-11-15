@@ -8,7 +8,7 @@
  * checked here, because a card that goes out on someone's Instagram is the most
  * public thing this repo produces and the easiest to get subtly wrong.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 
@@ -22,7 +22,21 @@ const REPO = (() => {
   const m = url.match(/github\.com\/([^/]+\/[^/]+)/);
   return m ? `github.com/${m[1]}` : 'github.com/mafk21/swarmcraft';
 })();
-import { renderCardSvg, wrap, measure, CARDS, CARD_NAMES, CARD_RENDERERS, CARD_W, CARD_H, CARD_FONTS, CARD_FONT_DIRS } from './lib/story-cards.mjs';
+import {
+  renderCardSvg,
+  wrap,
+  measure,
+  CARDS,
+  CARD_NAMES,
+  CARD_RENDERERS,
+  CARD_W,
+  CARD_H,
+  SOCIAL_W,
+  SOCIAL_H,
+  BRAND,
+  CARD_FONTS,
+  CARD_FONT_DIRS,
+} from './lib/story-cards.mjs';
 
 let fail = 0;
 const ok = (name, cond, detail = '') => {
@@ -80,6 +94,45 @@ for (const [name, card] of Object.entries(CARDS)) {
      half a sentence. Wrapping is testable without a renderer. */
   ok(`${name}: sub wraps inside the column`, wrap(card.sub, 31, 872, 'sans').every((l) => measure(l, 31, 'sans') <= 872));
   ok(`${name}: claim wraps inside the column`, card.claim.split('\n').every((l) => measure(l, 88, 'serif') <= 900), String(Math.round(measure(card.claim.split('\n')[0], 88, 'serif'))));
+}
+
+/* ── the name, everywhere it is drawn ──────────────────────────────────────
+   The poster said SWARMSMITH for months after the rename. Nothing caught it,
+   because a rendered picture is not greppable and nobody re-reads a finished
+   asset. So the name is read from package.json and asserted in every SVG, and
+   the old one is asserted to be nowhere. */
+{
+  const all = ['launch', 'guarantee', 'poster', 'social'].map((n) => [n, CARD_RENDERERS[n]()]);
+  ok('the brand comes from package.json', BRAND === REPO.split('/').pop().toUpperCase(), BRAND);
+  for (const [name, svg] of all) {
+    ok(`${name}: does not say the old name`, !/swarmsmith/i.test(svg), 'a renamed product is being drawn under its old name');
+  }
+  ok('the poster says the current name', CARD_RENDERERS.poster().includes(`>${BRAND}<`));
+}
+
+/* ── the social preview ──────────────────────────────────────────────────────
+   GitHub shows this on every link to the repo, and it is uploaded by hand, so
+   the two things that can silently be wrong are the aspect ratio and the file
+   size. Both are checkable here. */
+{
+  const svg = CARD_RENDERERS.social();
+  ok('social: is 1280×640', SOCIAL_W === 1280 && SOCIAL_H === 640 && svg.includes('width="1280" height="640"'));
+  ok('social: has the url', svg.includes(REPO));
+  ok('social: names the three families', ['Instrument Serif', 'Instrument Sans', 'JetBrains Mono'].every((f) => svg.includes(`font-family="${f}"`)));
+  ok('social: nine cursors are not needed here, five are on the sheet', (svg.match(/<path d="M3 2 L3 19/g) ?? []).length === 5);
+  ok('social: no external request', !/href="https?:|xlink:href/.test(svg));
+  ok('social: no gradient', !/<(linear|radial)Gradient|url\(#[^)]*[Gg]radient/.test(svg));
+  ok('social: nothing runs off the right edge', !/<text[^>]*x="(1[3-9]\d\d|\d{5,})"/.test(svg));
+
+  const png = new URL('../docs/media/story-social.png', import.meta.url);
+  if (existsSync(png)) {
+    const bytes = statSync(png).size;
+    /* GitHub's limit for this asset is 1 MB; it refuses quietly by doing nothing. */
+    ok('social: under GitHub\'s 1 MB limit', bytes < 1024 * 1024, `${Math.round(bytes / 1024)} kB`);
+    ok('social: is a png', readFileSync(png).subarray(1, 4).toString('latin1') === 'PNG');
+  } else {
+    console.log('  note  docs/media/story-social.png has not been rendered (npm run card -- social)');
+  }
 }
 
 /* ── the fonts are really there ───────────────────────────────────────────── */
