@@ -203,7 +203,17 @@ npm run shots -- --check      # verify the plumbing, capture nothing
 It builds the app, serves it locally, answers the single Gemini request with a canned
 spec (no key, no quota), clicks through the real screens and writes the GIF and two
 PNGs into `docs/media/`. If it cannot find a browser it says so and exits `2` — it
-never writes a placeholder. Details in [docs/media/README.md](docs/media/README.md).
+never writes a placeholder.
+
+There is also a **story card** — a 1080×1920 poster, for posting rather than
+screen-recording:
+
+```bash
+npm run card                  # docs/media/story-launch.png + story-guarantee.png
+npm run card -- --check       # fonts and names only, renders nothing
+```
+
+Details in [docs/media/README.md](docs/media/README.md).
 
 </details>
 

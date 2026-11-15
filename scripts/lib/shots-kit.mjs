@@ -237,7 +237,16 @@ export function stubModelBody(spec = DEMO_SPEC) {
  * become a file read. `resolvePath` collapses the traversal, then the prefix
  * check rejects whatever is left outside.
  */
-export function resolveStatic(root, pathname, exists = existsSync, isFile = defaultIsFile) {
+export function resolveStatic(root, pathname, exists = existsSync, isFile = defaultIsFile, mounts = null) {
+  /* `mounts` is checked first, longest prefix wins, so one server can hand out
+     `dist/` and the two font files a story card needs out of node_modules. */
+  if (mounts && typeof mounts === 'object') {
+    for (const [prefix, dir] of Object.entries(mounts).sort((a, b) => b[0].length - a[0].length)) {
+      if (pathname.startsWith(prefix)) {
+        return resolveStatic(dir, pathname.slice(prefix.length) || '/', exists, isFile);
+      }
+    }
+  }
   let decoded;
   try {
     decoded = decodeURIComponent(pathname.split('?')[0].split('#')[0]);
