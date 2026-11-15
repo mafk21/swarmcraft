@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useApp, briefReady } from '../store';
 import { KIND_BRIEFS, type Question } from '../../lib/questions';
 import { extractPdf, PdfError } from '../../lib/pdf';
+import { sampleAnswers, sampleFor } from '../../lib/samples';
 
 /**
  * What to type, not what to sell.
@@ -43,6 +44,12 @@ export default function BriefScreen() {
      screen. */
   const [showDetail, setShowDetail] = useState(false);
 
+  /* The sample state lives up here for the same reason showDetail does: a hook
+     after the `if (!kind) return null` below runs on some renders and not
+     others, and React throws "Rendered more hooks than during the previous
+     render" — which blanks the screen. */
+  const [sampled, setSampled] = useState(false);
+
   if (!kind) return null;
   const brief = KIND_BRIEFS[kind];
 
@@ -51,6 +58,26 @@ export default function BriefScreen() {
      live — nothing is copied, merged or summarised first. */
   const extra = String(answers.prompt ?? '');
   const ready = briefReady(answers);
+
+  /* ── the sample brief ─────────────────────────────────────────────────────
+     The empty textarea is the wall. This fills it with a real brief so someone
+     can be watching cursors draw within a few seconds of installing the app.
+
+     Two rules, because this app refuses invented content:
+       · it only ever loads from a click that says "sample";
+       · once loaded, the form SAYS so, and says it is meant to be replaced. It
+         is never loaded on mount, and never re-applied behind the user's back. */
+  const sample = sampleFor(brief.kind);
+
+  function loadSample() {
+    const filled = sampleAnswers(brief.kind);
+    for (const [id, value] of Object.entries(filled)) setAnswer(id, value);
+    setSampled(true);
+  }
+
+  /* Any edit is the user taking it over. The note stays only while the text is
+     still the sample's — after one keystroke it is their brief, not a sample. */
+  const stillSample = sampled && extra === sample.brief && String(answers.name ?? '') === sample.name;
 
   async function onFile(f: File | undefined) {
     if (!f) return;
@@ -92,6 +119,33 @@ export default function BriefScreen() {
               maxLength={70}
             />
           </Field>
+
+          {!ready && !sampled && (
+            <div className="sample-cta">
+              <div>
+                <strong>Nothing to type yet?</strong>
+                <span>
+                  Load a sample brief for this kind of site, then press Build. It is a real
+                  brief — replace it whenever you like.
+                </span>
+              </div>
+              <button type="button" className="btn btn-sm" onClick={loadSample}>
+                Use the sample
+              </button>
+            </div>
+          )}
+
+          {stillSample && (
+            <div className="sample-note">
+              <span>
+                These are <strong>sample answers</strong> for “{sample.name}”. Edit anything to make
+                it yours — the page that gets built is only as true as this box.
+              </span>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setSampled(false)}>
+                Hide this
+              </button>
+            </div>
+          )}
 
           {/* the box the user asked for: their whole brief, in their words */}
           <Field

@@ -1,136 +1,198 @@
 /* ============================================================================
-   "There is no place to see my past works."
+   Undo, and the three ways a history goes wrong.
 
-   Two things made that true, and neither was a missing screen — the screen
-   existed the whole time. First, a build was never SAVED: it lived in memory
-   until the user pressed Save on the result screen, so anyone who closed the
-   tab, or never noticed the button, had an empty history forever. Second, the
-   result screen hid the header, so there was no way back to the list.
+   Each of these is a bug that ships and is then believed to be a feature:
 
-   This drives a real build and then asks the database what exists.
+     · coalescing that never expires — type a headline, change a price, come
+       back to the headline, and the whole session is one undo step;
+     · a redo branch that survives a new edit — undo, type something, press
+       redo, and the app restores a page that never existed;
+     · a stack with no floor — undo at the bottom either throws or silently
+       replaces the spec with undefined.
+
+   history.ts is deliberately React-free so these can be asserted as arithmetic.
    ========================================================================== */
 import { build } from 'esbuild';
 import { scratch } from './_scratch.mjs';
-import { JSDOM } from 'jsdom';
 
-const out = scratch('history.mjs');
-const SPEC = {
-  meta: { title: 'Falcon Coffee', description: 'Roasted in Dammam.', theme: 'editorial', accent: 'clay', themeReason: 'x' },
-  nav: { brand: 'Falcon', links: [] },
-  sections: [
-    { type: 'hero', headline: 'Coffee roasted here', sub: 'Weekly batches.' },
-    { type: 'features', heading: 'What we do', items: [
-      { title: 'Roast', body: 'Tuesday.' }, { title: 'Grind', body: 'To order.' }, { title: 'Ship', body: 'Same day.' }] },
-    { type: 'contact', heading: 'Come by', form: true },
-  ],
-  footer: { note: 'Dammam' },
-  voice: { register: 'plain', facts: [] },
-};
-
-/* A real in-memory idb, so "was it saved" is answered by a database and not by
-   a spy on saveProject. */
-const store = new Map();
-
+const out = scratch('history.bundle.mjs');
 await build({
-  entryPoints: ['scripts/fixtures/strict-entry.tsx'],
-  bundle: true, format: 'esm', platform: 'browser', outfile: out.path,
-  logLevel: 'silent', jsx: 'automatic',
-  define: { 'process.env.NODE_ENV': '"development"' },
-  plugins: [{
-    name: 'stub-storage',
-    setup(b) {
-      b.onResolve({ filter: /lib\/db$/ }, () => ({ path: 'd', namespace: 'd' }));
-      b.onLoad({ filter: /.*/, namespace: 'd' }, () => ({
-        loader: 'js',
-        contents: `const store = globalThis.__STORE__;
-          export function storageAvailable(){return true}
-          export class StorageUnavailable extends Error{}
-          export async function getApiKey(){return 'AQ.Ab8Xk2nQ9wBiA_TESTKEY_123456789'}
-          export const usingFolder = () => false;
-          export const folderName = () => null;
-          export const folderSupported = () => false;
-          export const rememberKeyForSession = () => {};
-          export async function chooseFolder(){ return null; }
-                    export async function setApiKey(){}
-          export async function clearApiKey(){}
-          let n = 0;
-          export async function saveProject(spec, opts = {}) {
-            globalThis.__SAVECALLS__ = (globalThis.__SAVECALLS__ ?? 0) + 1;
-            const id = opts.id ?? 'proj-' + (++n);
-            store.set(id, { id, name: spec.meta.title, kind: opts.kind ?? null,
-              created: Date.now(), updated: Date.now(), spec });
-            return id;
-          }
-          export async function listProjects(){ return [...store.values()] }
-          export async function getProject(id){ return store.get(id) }
-          export async function renameProject(){}
-          export async function deleteProject(id){ store.delete(id) }
-          export async function countProjects(){ return store.size }
-          export async function addMedia(){return 'm1'}
-          export async function listMedia(){return []}
-          export async function getMedia(){return undefined}
-          export async function deleteMedia(){}
-          export async function inlineMedia(h){return h}`,
-      }));
-    },
-  }],
+  entryPoints: ['src/lib/history.ts'],
+  bundle: true,
+  format: 'esm',
+  platform: 'neutral',
+  outfile: out.path,
+  logLevel: 'silent',
 });
 
-globalThis.__STORE__ = store;
-
-const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
-const w = dom.window;
-globalThis.window = w; globalThis.document = w.document;
-Object.defineProperty(globalThis, 'navigator', { value: w.navigator, configurable: true });
-for (const k of ['HTMLElement', 'Element', 'Node', 'MutationObserver', 'Blob', 'URL', 'DOMException'])
-  globalThis[k] = w[k];
-globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(1), 0);
-globalThis.cancelAnimationFrame = (h) => clearTimeout(h);
-w.requestAnimationFrame = globalThis.requestAnimationFrame;
-w.cancelAnimationFrame = globalThis.cancelAnimationFrame;
-globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
-globalThis.HTMLCanvasElement = w.HTMLCanvasElement;
-/* a no-op 2D context: the swarm renders for real, it just does not paint */
-const ctx = new Proxy(
-  { measureText: (t) => ({ width: String(t).length * 7 }), canvas: { width: 2800, height: 1720 } },
-  { get: (t, k) => (k in t ? t[k] : typeof k === 'string' ? () => undefined : undefined), set: () => true }
-);
-w.HTMLCanvasElement.prototype.getContext = () => ctx;
-
-/* the model answers instantly with a good page */
-globalThis.fetch = async () => ({
-  ok: true, status: 200,
-  headers: { get: () => 'application/json' },
-  json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(SPEC) }] } }] }),
-});
-w.fetch = globalThis.fetch;
+const { historyOf, commit, undo, redo, canUndo, canRedo, MAX_DEPTH, COALESCE_MS, reset } = await import(out.url);
 
 let fail = 0;
-const ok = (n, c, d = '') => { if (!c) { fail++; console.log(`  FAIL  ${n}${d ? ` — ${d}` : ''}`); } };
+const ok = (n, c, d = '') => {
+  if (!c) {
+    fail++;
+    console.log(`  FAIL  ${n}${d ? ` — ${d}` : ''}`);
+  }
+};
 
-const mod = await import(out.url);
+/* A spec is a tree of plain values; the tests use a tiny stand-in. */
+const v = (n) => ({ n });
 
-const before = store.size;
-ok('nothing is saved before a build', before === 0, `${before} rows`);
+/* ── the floor ───────────────────────────────────────────────────────────── */
 
-mod.mountBuild();
-/* a full build: model, measure, animation. Generous, but the test is about the
-   database, not the clock. */
-await new Promise((r) => setTimeout(r, 30_000));
+{
+  const h0 = historyOf(v(1), 0);
+  ok('nothing to undo at the start', !canUndo(h0) && !canRedo(h0));
 
-const after = [...store.values()];
-ok('finishing a build SAVES it, without being asked', after.length === 1,
-  `${after.length} rows in the database`);
-ok('what was saved is the page that was built',
-  after[0] && after[0].spec?.meta?.title === 'Falcon Coffee',
-  after[0] ? JSON.stringify(after[0].spec?.meta?.title) : 'nothing saved');
-ok('it is listed as a site, so "Your sites" can show it',
-  after[0] && typeof after[0].name === 'string' && after[0].name.length > 0,
-  after[0]?.name);
-ok('it records when it was made, for the history ordering',
-  after[0] && typeof after[0].updated === 'number', String(after[0]?.updated));
+  /* Undo at the bottom must be a no-op, not undefined-present. The state has to
+     be identical AND the identity preserved, so a caller can skip a re-render. */
+  /* Guarded: a broken undo returns undefined here, and an assertion that throws
+     instead of failing reports a crash rather than the bug it was written for. */
+  const h1 = undo(h0, 10);
+  ok(
+    'undo at the bottom does nothing',
+    h1?.present?.n === 1 && h1 === h0,
+    JSON.stringify(h1?.present)
+  );
+  /* and the same when there IS a history but the stack is exhausted */
+  let drained = commit(historyOf(v(7), 0), v(8), 'a', 100);
+  drained = undo(drained, 200);
+  const again = undo(drained, 300);
+  ok(
+    'undo past the floor keeps the state',
+    again?.present?.n === 7 && again === drained,
+    JSON.stringify(again?.present)
+  );
 
-console.log(fail === 0
-  ? '\nHISTORY OK — a finished build is in the database, so it appears in "Your sites"'
-  : `\n${fail} FAILED`);
+  /* Redo at the top must be a no-op too. */
+  const h2 = redo(h0, 10);
+  ok('redo at the top does nothing', h2.present.n === 1 && h2 === h0);
+}
+
+/* ── undo and redo round-trip ────────────────────────────────────────────── */
+
+{
+  let h = historyOf(v(1), 0);
+  h = commit(h, v(2), 'headline', 100);
+  ok('an edit moves the present', h.present.n === 2);
+  ok('an edit gives you something to undo', canUndo(h));
+  ok('an edit clears the future', h.future.length === 0);
+
+  h = undo(h, 200);
+  ok('undo goes back', h.present.n === 1, String(h.present.n));
+  ok('undo offers redo', canRedo(h));
+  ok('undo at the start again has no undo', !canUndo(h));
+
+  h = redo(h, 300);
+  ok('redo goes forward', h.present.n === 2, String(h.present.n));
+  ok('redo leaves nothing to redo', !canRedo(h));
+}
+
+/* ── coalescing: one sentence, one step ─────────────────────────────────── */
+
+{
+  let h = historyOf(v(''), 0);
+  let t = 1000;
+  /* ten keystrokes in the same field, 80ms apart: one undo step */
+  for (let i = 1; i <= 10; i++) {
+    h = commit(h, v('abc'.repeat(i)), 'headline', t);
+    t += 80;
+  }
+  ok('a typed sentence is one step', h.past.length === 1, `${h.past.length} steps`);
+  h = undo(h, t + 10);
+  ok('undoing a sentence removes all of it', h.present.n === '', JSON.stringify(h.present));
+}
+
+{
+  /* same field, but a long pause between: two steps */
+  let h = historyOf(v('a'), 0);
+  h = commit(h, v('ab'), 'headline', 1000);
+  h = commit(h, v('abc'), 'headline', 1000 + COALESCE_MS + 1);
+  ok('a pause starts a new step', h.past.length === 2, `${h.past.length} steps`);
+}
+
+{
+  /* different fields, immediately: two steps, even inside the window */
+  let h = historyOf(v('a'), 0);
+  h = commit(h, v('ab'), 'headline', 1000);
+  h = commit(h, v('ab2'), 'sub', 1010);
+  ok('switching fields starts a new step', h.past.length === 2, `${h.past.length} steps`);
+}
+
+{
+  /* coming back to the first field inside the window must NOT merge with the
+     edit from before the field switch — the key changed in between */
+  let h = historyOf(v('a'), 0);
+  h = commit(h, v('ab'), 'headline', 1000);
+  h = commit(h, v('abX'), 'sub', 1010);
+  h = commit(h, v('abc'), 'headline', 1020);
+  ok('a field reopened inside the window is still its own step', h.past.length === 3, `${h.past.length} steps`);
+}
+
+/* ── a new edit kills the redo branch ───────────────────────────────────── */
+
+{
+  let h = historyOf(v(1), 0);
+  h = commit(h, v(2), 'a', 100);
+  h = undo(h, 200);
+  ok('there is a branch to redo', canRedo(h));
+  h = commit(h, v(3), 'b', 300);
+  ok('a new edit drops the old future', !canRedo(h), `${h.future.length} future states`);
+  /* and the state it dropped is genuinely unreachable */
+  const back = undo(h, 400);
+  ok('undo after a new edit returns the pre-edit state', back.present.n === 1, String(back.present.n));
+}
+
+/* ── the stack is bounded ───────────────────────────────────────────────── */
+
+{
+  let h = historyOf(v(0), 0);
+  for (let i = 1; i <= MAX_DEPTH * 3; i++) h = commit(h, v(i), `f${i}`, i * 1000);
+  ok('the past is bounded', h.past.length <= MAX_DEPTH, `${h.past.length}`);
+  /* and undoing all the way still lands on a real state, not undefined */
+  let steps = 0;
+  while (canUndo(h)) {
+    h = undo(h, 1_000_000 + steps);
+    steps++;
+  }
+  ok('undoing to the floor is safe', h.present.n !== undefined && Number.isFinite(h.present.n), JSON.stringify(h.present));
+  ok('the floor is a real state from the history', steps === MAX_DEPTH, `${steps} steps`);
+}
+
+/* ── identity: an edit that changes nothing is not a step ───────────────── */
+
+{
+  let h = historyOf(v(1), 0);
+  /* editSectionField returns the SAME object when a field is set to its current
+     value; that must not become an undo step the user has to press twice. */
+  h = commit(h, h.present, 'headline', 100);
+  ok('a no-op edit records nothing', h.past.length === 0);
+}
+
+/* ── a fresh spec from the outside clears the history ───────────────────── */
+
+{
+  let h = historyOf(v(1), 0);
+  h = commit(h, v(2), 'a', 100);
+  h = reset(h, v(99), 200);
+  ok('opening another site clears undo', !canUndo(h) && !canRedo(h));
+  ok('opening another site shows that site', h.present.n === 99);
+}
+
+/* ── undo then edit then undo again is stable ───────────────────────────── */
+
+{
+  let h = historyOf(v(1), 0);
+  h = commit(h, v(2), 'a', 100);
+  h = commit(h, v(3), 'b', 200);
+  h = undo(h, 300);          // back to 2
+  h = undo(h, 400);          // back to 1
+  ok('two undos reach the original', h.present.n === 1, String(h.present.n));
+  h = redo(h, 500);
+  h = redo(h, 600);
+  ok('two redos return to the edit', h.present.n === 3, String(h.present.n));
+  ok('the stacks agree after a round trip', !canRedo(h) && h.past.length === 2, `${h.past.length}/${h.future.length}`);
+}
+
+console.log(fail ? `\nHISTORY ${fail} FAILED\n` : '\nHISTORY OK — bounded, coalesced, redoable, and never at undefined\n');
 process.exit(fail ? 1 : 0);

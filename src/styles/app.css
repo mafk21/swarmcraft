@@ -1513,3 +1513,168 @@
 .prompt-box::placeholder {
   color: var(--t3);
 }
+
+/* ── the sample brief ─────────────────────────────────────────────────────
+   A quiet strip above the name field, shown only while the form is empty. It
+   is the difference between "what do I type" and a first build, so it gets to
+   look like an offer rather than a warning: no accent border, no icon, one
+   sentence and one button. */
+
+.sample-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--l2);
+  border-radius: 4px;
+  background: var(--s1);
+}
+
+.sample-cta > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sample-cta strong {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--t0);
+}
+
+.sample-cta span {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--t2);
+  max-width: 46ch;
+}
+
+/* after loading: the same strip, but it is now a statement about the page */
+.sample-note {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--c0);
+  background: rgba(91, 140, 255, 0.07);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--t1);
+}
+
+.sample-note strong {
+  color: var(--t0);
+  font-weight: 500;
+}
+
+@media (max-width: 640px) {
+  .sample-cta,
+  .sample-note {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* ── undo in the inspector ────────────────────────────────────────────────
+   Two glyph buttons beside the title, where every editor puts them. Disabled
+   rather than hidden, so the affordance does not move around as you work. */
+
+.undo-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 2px;
+}
+
+.undo-btn {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--t1);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.undo-btn:hover:not(:disabled) {
+  background: var(--s2);
+  color: var(--t0);
+}
+
+.undo-btn:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+/* ── the device toggle on the result screen ───────────────────────────────
+   Phone is 390px of real layout inside the same iframe, so it is the page at a
+   phone's width rather than a picture of one: media queries fire, the nav
+   collapses, the grid goes to one column. 390 and not 375 because that is the
+   width most phones actually report after the scrollbar. */
+
+.device-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  border: 1px solid var(--l2);
+  border-radius: 4px;
+}
+
+.device-tab {
+  border: 0;
+  background: transparent;
+  color: var(--t2);
+  font: inherit;
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  padding: 4px 9px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.device-tab:hover {
+  color: var(--t0);
+}
+
+.device-tab.on {
+  background: var(--s2);
+  color: var(--t0);
+}
+
+/* the stage centres a phone-width frame on the same dark bench */
+.bench-stage.on-phone {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  overflow: auto;
+  padding: 18px 0;
+}
+
+.bench-stage.on-phone iframe {
+  width: 390px;
+  flex: 0 0 390px;
+  height: 100%;
+  border: 1px solid var(--l2);
+  border-radius: 6px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+@media (max-width: 1000px) {
+  .bench-stage.on-phone iframe {
+    width: 390px;
+    max-width: 100%;
+    height: 60vh;
+  }
+}
