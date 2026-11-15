@@ -7,7 +7,7 @@ import {
   chooseFolder,
   folderSupported,
 } from '../../lib/db';
-import { testKey } from '../../lib/gemini';
+import { testKey, diagnose } from '../../lib/gemini';
 import { rememberKeyForSession } from './BuildScreen';
 import { shortStamp } from '../../lib/version';
 
@@ -69,6 +69,16 @@ export default function KeyScreen() {
     setBusy(false);
 
     if (!res.ok) {
+      /* Nothing reached Google. Do not tell the user their key is wrong on the
+         strength of a browser that is not allowed to read the difference
+         between "refused" and "blocked" — probe, then say what was observed. */
+      if (res.unreachable) {
+        setMsg({ ok: false, text: 'Checking what is blocking it…' });
+        const finding = await diagnose(trimmed);
+        setBusy(false);
+        setMsg({ ok: false, text: finding });
+        return;
+      }
       setMsg({ ok: false, text: res.message });
       return;
     }
