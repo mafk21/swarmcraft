@@ -68,7 +68,8 @@ is that it really does this is worse than no image at all.
 # Story cards
 
 `npm run card` renders **1080×1920** PNGs from `scripts/lib/story-cards.mjs`, for
-posting to an Instagram or WhatsApp story:
+posting to an Instagram or WhatsApp story. It needs no browser — the card is SVG,
+rasterised with `@resvg/resvg-js` — so it runs anywhere, including CI:
 
 ```bash
 npm run card              # both cards
@@ -80,6 +81,13 @@ npm run card -- --check   # check fonts and names, render nothing
 |---|---|
 | `docs/media/story-launch.png` | what the thing is: the claim, a drawing of a page mid-build, three proofs, the repo URL |
 | `docs/media/story-guarantee.png` | the rule: the model never writes CSS |
+
+Two things about the fonts are worth knowing if you touch the renderer. `resvg`
+ignores woff2 entirely and substitutes a system face without complaining, so the
+three bundled faces are decompressed to `.ttf` first; and `wawoff2.decompress` is
+not concurrency-safe, so they are decompressed one at a time. The tool now proves
+the three faces render distinctly before it writes a PNG and fails if they do not,
+because a card in the wrong typeface is the exact kind of wrong that gets posted.
 
 Why a card and not a screenshot: a story is read in one second, on a phone, by
 someone who did not ask for it. A screenshot of a desktop app shrinks to nothing

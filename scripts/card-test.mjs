@@ -11,7 +11,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { renderCard, CARDS, CARD_NAMES, CARD_W, CARD_H, CARD_FONTS, CARD_FONT_DIRS } from './lib/story-cards.mjs';
+import { renderCardSvg, wrap, measure, CARDS, CARD_NAMES, CARD_W, CARD_H, CARD_FONTS, CARD_FONT_DIRS } from './lib/story-cards.mjs';
 
 let fail = 0;
 const ok = (name, cond, detail = '') => {
@@ -41,27 +41,34 @@ for (const [name, card] of Object.entries(CARDS)) {
 /* ── the document ─────────────────────────────────────────────────────────── */
 
 for (const [name, card] of Object.entries(CARDS)) {
-  const html = renderCard(card);
+  const svg = renderCardSvg(card);
 
-  ok(`${name}: is a document`, /^<!doctype html>/i.test(html));
-  ok(`${name}: declares the story size`, html.includes(`${CARD_W}px`) && html.includes(`${CARD_H}px`));
-  ok(`${name}: is 1080×1920`, CARD_W === 1080 && CARD_H === 1920);
-  ok(`${name}: loads all three bundled faces`, Object.values(CARD_FONTS).every((f) => html.includes(f)));
-  ok(`${name}: the claim is on the card`, html.includes(card.claim.split('\n')[0].slice(0, 12)));
-  ok(`${name}: the url is on the card`, html.includes('github.com/mafk21/swarm-builder'));
-  ok(`${name}: has nine cursors`, (html.match(/class="cur"/g) ?? []).length === 9, String((html.match(/class="cur"/g) ?? []).length));
-  ok(`${name}: every cursor has its own colour`, new Set([...html.matchAll(/--cc:(#[0-9a-f]{6})/g)].map((m) => m[1])).size === 9);
-  ok(`${name}: no external request`, !/(src|href)="https?:/.test(html), 'a card must render offline');
-  ok(`${name}: no <script>`, !/<script/i.test(html));
+  ok(`${name}: is an svg`, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/.test(svg));
+  ok(`${name}: is 1080×1920`, CARD_W === 1080 && CARD_H === 1920 && svg.includes(`width="${CARD_W}" height="${CARD_H}"`));
+  ok(`${name}: names the three bundled families`, ['Instrument Serif', 'Instrument Sans', 'JetBrains Mono'].every((f) => svg.includes(`font-family="${f}"`)));
+  ok(`${name}: the claim is on the card`, svg.includes(card.claim.split('\n')[0].split(' ')[0]));
+  ok(`${name}: the url is on the card`, svg.includes('github.com/mafk21/swarm-builder'));
+  ok(`${name}: nine cursors`, (svg.match(/<path d="M3 2 L3 19/g) ?? []).length === 9, String((svg.match(/<path d="M3 2 L3 19/g) ?? []).length));
+  ok(`${name}: every cursor has its own colour`, new Set([...svg.matchAll(/fill="(#[0-9a-f]{6})" stroke="#0b0b0c"/g)].map((m) => m[1])).size === 9);
+  ok(`${name}: no external request`, !/href="https?:|xlink:href/.test(svg), 'a card must render offline');
+  ok(`${name}: no script`, !/<script/i.test(svg));
+  ok(`${name}: no raster image`, !/<image/i.test(svg), 'the drawing must stay vector');
 
   /* The app's own doctrine, applied to its own poster. */
-  ok(`${name}: no gradient background`, !/background:[^;]*gradient\(/i.test(html.split('.hero-box')[0]), 'the graticule is the only texture');
-  ok(`${name}: no blur or glass`, !/blur\(|backdrop-filter/i.test(html));
-  ok(`${name}: monochrome chrome with one accent`, (html.match(/#[0-9a-f]{6}/gi) ?? []).length > 4);
+  /* The word appears in the guarantee card's own copy ("never gradients"), so
+     this looks for the markup, not the letters. */
+  ok(`${name}: no gradient paint`, !/<(linear|radial)Gradient|url\(#[^)]*[Gg]radient/.test(svg), 'the graticule is the only texture');
+  ok(`${name}: no filter or blur`, !/<filter|feGaussian/i.test(svg));
+  ok(`${name}: no pure black or pure white`, !svg.includes('fill="#000000"') && !svg.includes('fill="#ffffff"'));
 
-  /* Escaping: the card interpolates strings into HTML, so a stray `&` or `<`
-     in edited copy must not be able to break the document. */
-  ok(`${name}: escapes the copy`, !html.includes('<script') && renderCard({ ...card, claim: 'a < b & c' }).includes('a &lt; b &amp; c'));
+  /* Escaping: copy is interpolated, so a stray `&` or `<` in edited words must
+     not be able to break the document. */
+  ok(`${name}: escapes the copy`, renderCardSvg({ ...card, sub: 'a < b & c' }).includes('a &lt; b &amp; c'));
+
+  /* A card whose text runs off the right edge is a card that gets posted with
+     half a sentence. Wrapping is testable without a renderer. */
+  ok(`${name}: sub wraps inside the column`, wrap(card.sub, 31, 872, 'sans').every((l) => measure(l, 31, 'sans') <= 872));
+  ok(`${name}: claim wraps inside the column`, card.claim.split('\n').every((l) => measure(l, 88, 'serif') <= 900), String(Math.round(measure(card.claim.split('\n')[0], 88, 'serif'))));
 }
 
 /* ── the fonts are really there ───────────────────────────────────────────── */
@@ -83,6 +90,13 @@ ok('every card has a description', Object.keys(CARD_NAMES).every((k) => k in CAR
 ok('every card is in the CLI map', Object.keys(CARDS).every((k) => k in CARD_NAMES));
 ok('card names are filename-safe', Object.keys(CARDS).every((k) => /^[a-z][a-z-]*$/.test(k)));
 ok('two cards', Object.keys(CARDS).length === 2);
+
+/* wrap() is what keeps text on the card; it has to be right on its own. */
+ok('wrap keeps every line inside the width', wrap('the quick brown fox jumps over the lazy dog again and again', 30, 300, 'sans').every((l) => measure(l, 30, 'sans') <= 300));
+ok('wrap never loses a word', wrap('alpha beta gamma', 30, 1000, 'sans').join(' ') === 'alpha beta gamma');
+ok('wrap breaks a single over-long word rather than overflowing', wrap('averyveryverylongwordthatcannotfit', 40, 60, 'sans').length >= 1);
+ok('wrap of empty text yields one empty line', wrap('', 30, 300).length === 1);
+ok('measure grows with size', measure('abc', 20) < measure('abc', 40));
 
 /* ── done ─────────────────────────────────────────────────────────────────── */
 
