@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <defs>
+    <pattern id="graticule" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0 H0 V32" fill="none" stroke="#f5f3ef" stroke-opacity="0.022" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1080" height="1920" fill="#0b0b0c"/>
+  <rect width="1080" height="1920" fill="url(#graticule)"/>
+
+  <text x="84" y="188" font-family="JetBrains Mono" font-size="24" letter-spacing="5" fill="#8a8780">SWARMSMITH · THE ONE GUARANTEE</text>
+
+  <text x="84" y="330" font-family="Instrument Serif" font-size="88" fill="#f5f3ef">The model</text>
+  <text x="84" y="426" font-family="Instrument Serif" font-size="88" fill="#f5f3ef">never writes CSS.</text>
+
+  <text x="84" y="528" font-family="Instrument Sans" font-size="31" fill="#b6b3ac">The spec is strict and has no field for a colour, a size or a</text>
+  <text x="84" y="572" font-family="Instrument Sans" font-size="31" fill="#b6b3ac">class. The worst page it can make is plain — never</text>
+  <text x="84" y="616" font-family="Instrument Sans" font-size="31" fill="#b6b3ac">gradients, never three identical cards.</text>
+
+  
+  <g transform="translate(0 150)">
+    <rect x="84" y="556" width="912" height="676" rx="10" fill="#111113" stroke="#2b2b30"/>
+    <path d="M84 566 a10 10 0 0 1 10-10 h892 a10 10 0 0 1 10 10 v32 h-912 z" fill="#171719"/>
+    <line x1="84" y1="598" x2="996" y2="598" stroke="#1f1f23"/>
+    <circle cx="112" cy="577" r="5.5" fill="#383840"/><circle cx="132" cy="577" r="5.5" fill="#383840"/><circle cx="152" cy="577" r="5.5" fill="#383840"/>
+    <text x="180" y="584" font-family="JetBrains Mono" font-size="19" fill="#8a8780">SiteSpecSchema</text>
+    <rect x="846" y="564" width="132" height="27" rx="4" fill="#102019" stroke="#1f3a2c"/>
+    <text x="912" y="583" text-anchor="middle" font-family="JetBrains Mono" font-size="15" letter-spacing="2.4" fill="#3dd68c">STRICT</text>
+    
+    <rect x="112" y="626" width="856" height="560" rx="5" fill="#0b0b0c" stroke="#2b2b30"/>
+    <text x="140" y="664" font-family="JetBrains Mono" font-size="17" letter-spacing="2.4" fill="#8a8780">WHAT THE MODEL MAY RETURN</text>
+    
+    <text x="150" y="700" font-family="JetBrains Mono" font-size="25" fill="#b6b3ac">sections</text>
+    <text x="330" y="700" font-family="JetBrains Mono" font-size="25" fill="#5d5b55">string · required</text>
+    
+    <text x="150" y="758" font-family="JetBrains Mono" font-size="25" fill="#b6b3ac">heading</text>
+    <text x="330" y="758" font-family="JetBrains Mono" font-size="25" fill="#5d5b55">string · required</text>
+    
+    <text x="150" y="816" font-family="JetBrains Mono" font-size="25" fill="#b6b3ac">body</text>
+    <text x="330" y="816" font-family="JetBrains Mono" font-size="25" fill="#5d5b55">string · required</text>
+    
+    <text x="150" y="874" font-family="JetBrains Mono" font-size="25" fill="#b6b3ac">cta</text>
+    <text x="330" y="874" font-family="JetBrains Mono" font-size="25" fill="#5d5b55">string · required</text>
+    
+    <text x="150" y="932" font-family="JetBrains Mono" font-size="25" fill="#b6b3ac">theme</text>
+    <text x="330" y="932" font-family="JetBrains Mono" font-size="25" fill="#5d5b55">string · required</text>
+    
+    <text x="150" y="990" font-family="JetBrains Mono" font-size="25" fill="#ff7a94">style</text>
+    <text x="330" y="990" font-family="JetBrains Mono" font-size="25" fill="#5d5b55">— no such field</text>
+    <line x1="140" y1="981" x2="535.7460000000001" y2="981" stroke="#ff7a94" stroke-width="1.5" opacity="0.7"/>
+    <text x="150" y="1048" font-family="JetBrains Mono" font-size="25" fill="#ff7a94">className</text>
+    <text x="330" y="1048" font-family="JetBrains Mono" font-size="25" fill="#5d5b55">— no such field</text>
+    <line x1="140" y1="1039" x2="535.7460000000001" y2="1039" stroke="#ff7a94" stroke-width="1.5" opacity="0.7"/>
+    <text x="150" y="1106" font-family="JetBrains Mono" font-size="25" fill="#ff7a94">css</text>
+    <text x="330" y="1106" font-family="JetBrains Mono" font-size="25" fill="#5d5b55">— no such field</text>
+    <line x1="140" y1="1097" x2="535.7460000000001" y2="1097" stroke="#ff7a94" stroke-width="1.5" opacity="0.7"/>
+    <text x="140" y="1190" font-family="JetBrains Mono" font-size="16" fill="#5d5b55">anything else is stripped, not rendered</text>
+    
+    <g transform="translate(820 640) scale(1.25)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#5b8cff" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(700 900) scale(1.1666666666666667)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#a97bff" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(880 1130) scale(1.25)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#35c6dd" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(420 1240) scale(1.1666666666666667)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#c3d94e" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(200 1130) scale(1.1666666666666667)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#3dd68c" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(760 1240) scale(1.1666666666666667)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#f0a92e" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(520 700) scale(1.1666666666666667)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#ff7a94" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(940 980) scale(1.1666666666666667)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#ff9548" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(150 1230) scale(1.1666666666666667)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#6fd0c0" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+  </g>
+
+  <line x1="86" y1="1447" x2="86" y2="1457" stroke="#ff9548" stroke-width="2.5"/><text x="112" y="1456" font-family="Instrument Sans" font-size="28" fill="#b6b3ac">Enforced by the schema</text>
+  <line x1="86" y1="1497" x2="86" y2="1507" stroke="#ff9548" stroke-width="2.5"/><text x="112" y="1506" font-family="Instrument Sans" font-size="28" fill="#b6b3ac">Not a prompt request</text>
+  <line x1="86" y1="1547" x2="86" y2="1557" stroke="#ff9548" stroke-width="2.5"/><text x="112" y="1556" font-family="Instrument Sans" font-size="28" fill="#b6b3ac">27 test suites</text>
+
+  <line x1="84" y1="1752" x2="996" y2="1752" stroke="#2b2b30"/>
+  <text x="84" y="1816" font-family="JetBrains Mono" font-size="30" fill="#f5f3ef">github.com/mafk21/swarm-builder</text>
+  <text x="996" y="1816" text-anchor="end" font-family="JetBrains Mono" font-size="21" fill="#8a8780">link in bio</text>
+  <text x="84" y="1872" font-family="JetBrains Mono" font-size="19" letter-spacing="4" fill="#5d5b55">NO SLOP</text>
+  <text x="996" y="1872" text-anchor="end" font-family="JetBrains Mono" font-size="19" letter-spacing="4" fill="#5d5b55">MIT</text>
+</svg>

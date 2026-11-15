@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <defs>
+    <pattern id="graticule" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0 H0 V32" fill="none" stroke="#f5f3ef" stroke-opacity="0.022" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1080" height="1920" fill="#0b0b0c"/>
+  <rect width="1080" height="1920" fill="url(#graticule)"/>
+
+  <text x="84" y="188" font-family="JetBrains Mono" font-size="24" letter-spacing="5" fill="#8a8780">SWARMSMITH · A WEBSITE BUILDER THAT DRAWS</text>
+
+  <text x="84" y="330" font-family="Instrument Serif" font-size="88" fill="#f5f3ef">Write a brief.</text>
+  <text x="84" y="426" font-family="Instrument Serif" font-size="88" fill="#f5f3ef">Watch it get built.</text>
+
+  <text x="84" y="528" font-family="Instrument Sans" font-size="31" fill="#b6b3ac">Nine cursors draw your website — dragging the boxes out,</text>
+  <text x="84" y="572" font-family="Instrument Sans" font-size="31" fill="#b6b3ac">typing the headline, stamping the cards — then the real</text>
+  <text x="84" y="616" font-family="Instrument Sans" font-size="31" fill="#b6b3ac">page fades in underneath.</text>
+
+  
+  <g transform="translate(0 150)">
+    <rect x="84" y="556" width="912" height="676" rx="10" fill="#111113" stroke="#2b2b30"/>
+    <path d="M84 566 a10 10 0 0 1 10-10 h892 a10 10 0 0 1 10 10 v32 h-912 z" fill="#171719"/>
+    <line x1="84" y1="598" x2="996" y2="598" stroke="#1f1f23"/>
+    <circle cx="112" cy="577" r="5.5" fill="#383840"/><circle cx="132" cy="577" r="5.5" fill="#383840"/><circle cx="152" cy="577" r="5.5" fill="#383840"/>
+    <text x="180" y="584" font-family="JetBrains Mono" font-size="19" fill="#8a8780">falconroasters.sa</text>
+    <rect x="846" y="564" width="132" height="27" rx="4" fill="#102019" stroke="#1f3a2c"/>
+    <text x="912" y="583" text-anchor="middle" font-family="JetBrains Mono" font-size="15" letter-spacing="2.4" fill="#3dd68c">BUILDING</text>
+    
+    <!-- the hero, caught mid-drag, with the measurement badge a real drag shows -->
+    <rect x="112" y="626" width="856" height="170" rx="4" fill="#ffffff04" stroke="#4a4a53" stroke-dasharray="6 5"/>
+    <rect x="124" y="638" width="96" height="28" rx="3" fill="#1d1d21" stroke="#383840"/>
+    <text x="172" y="657" text-anchor="middle" font-family="JetBrains Mono" font-size="15" fill="#b6b3ac">880 × 364</text>
+    
+    <g transform="translate(930 764) scale(1.3333333333333333)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#5b8cff" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+
+    <text x="112" y="836" font-family="JetBrains Mono" font-size="15" letter-spacing="3" fill="#8a8780">DAMMAM, SINCE 2019</text>
+
+    <text x="112" y="900" font-family="Instrument Serif" font-size="44" fill="#f5f3ef">Roasted on Tuesday, in your</text>
+    <text x="112" y="950" font-family="Instrument Serif" font-size="44" fill="#f5f3ef">cup by Thursday</text>
+    <rect x="442.7488" y="918" width="3" height="36" fill="#3dd68c"/>
+    
+    <g transform="translate(700 930) scale(1.25)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#3dd68c" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+
+    <rect x="112" y="986" width="700" height="9" rx="2" fill="#2b2b30"/>
+    <rect x="112" y="1007" width="660" height="9" rx="2" fill="#2b2b30"/>
+    <rect x="112" y="1028" width="430" height="9" rx="2" fill="#2b2b30"/>
+
+    <rect x="112" y="1078" width="410" height="86" rx="5" fill="#171719" stroke="#2b2b30"/>
+    <text x="132" y="1110" font-family="JetBrains Mono" font-size="19" fill="#f5f3ef">SAR 65</text>
+    <rect x="132" y="1124" width="220" height="8" rx="2" fill="#2b2b30"/>
+    <rect x="132" y="1142" width="140" height="8" rx="2" fill="#2b2b30"/>
+    <rect x="558" y="1078" width="410" height="86" rx="5" fill="#171719" stroke="#383840"/>
+    <text x="578" y="1110" font-family="JetBrains Mono" font-size="19" fill="#f5f3ef">SAR 70</text>
+    <rect x="578" y="1124" width="220" height="8" rx="2" fill="#2b2b30"/>
+    <rect x="578" y="1142" width="140" height="8" rx="2" fill="#2b2b30"/>
+    <line x1="540" y1="1064" x2="540" y2="1178" stroke="#ff7a94" stroke-width="1"/>
+    <rect x="520" y="1110" width="40" height="19" rx="2" fill="#1d1d21"/>
+    <text x="540" y="1124" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#ff7a94">24</text>
+    
+    <g transform="translate(760 1150) scale(1.25)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#f0a92e" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(196 1186) scale(1.1666666666666667)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#ff9548" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+
+    <line x1="112" y1="1206" x2="968" y2="1206" stroke="#383840"/>
+    <circle cx="968" cy="1206" r="4" fill="#35c6dd"/>
+    
+    <g transform="translate(300 690) scale(1.1666666666666667)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#a97bff" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(820 800) scale(1.25)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#35c6dd" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(160 1040) scale(1.1666666666666667)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#ff7a94" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(520 1180) scale(1.1666666666666667)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#c3d94e" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+    
+    <g transform="translate(880 1000) scale(1.25)">
+      <path d="M3 2 L3 19 L8 14.4 L11.2 21 L14.4 19.4 L11.2 13 L18 12.6 Z" fill="#6fd0c0" stroke="#0b0b0c" stroke-width="1.2" stroke-linejoin="round"/>
+    </g>
+  </g>
+
+  <line x1="86" y1="1447" x2="86" y2="1457" stroke="#ff9548" stroke-width="2.5"/><text x="112" y="1456" font-family="Instrument Sans" font-size="28" fill="#b6b3ac">One request · 80s hard limit</text>
+  <line x1="86" y1="1497" x2="86" y2="1507" stroke="#ff9548" stroke-width="2.5"/><text x="112" y="1506" font-family="Instrument Sans" font-size="28" fill="#b6b3ac">No backend · no account</text>
+  <line x1="86" y1="1547" x2="86" y2="1557" stroke="#ff9548" stroke-width="2.5"/><text x="112" y="1556" font-family="Instrument Sans" font-size="28" fill="#b6b3ac">MIT · runs on your machine</text>
+
+  <line x1="84" y1="1752" x2="996" y2="1752" stroke="#2b2b30"/>
+  <text x="84" y="1816" font-family="JetBrains Mono" font-size="30" fill="#f5f3ef">github.com/mafk21/swarm-builder</text>
+  <text x="996" y="1816" text-anchor="end" font-family="JetBrains Mono" font-size="21" fill="#8a8780">link in bio</text>
+  <text x="84" y="1872" font-family="JetBrains Mono" font-size="19" letter-spacing="4" fill="#5d5b55">V0.1</text>
+  <text x="996" y="1872" text-anchor="end" font-family="JetBrains Mono" font-size="19" letter-spacing="4" fill="#5d5b55">MIT</text>
+</svg>
