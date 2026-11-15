@@ -46,7 +46,12 @@ await build({
           export function storageAvailable(){return true}
           export class StorageUnavailable extends Error{}
           export async function getApiKey(){return 'AQ.Ab8Xk2nQ9wBiA_TESTKEY_123456789'}
-          export async function setApiKey(){}
+          export const usingFolder = () => false;
+          export const folderName = () => null;
+          export const folderSupported = () => false;
+          export const rememberKeyForSession = () => {};
+          export async function chooseFolder(){ return null; }
+                    export async function setApiKey(){}
           export async function clearApiKey(){}
           let n = 0;
           export async function saveProject(spec, opts = {}) {

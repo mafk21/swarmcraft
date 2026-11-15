@@ -234,7 +234,19 @@ async function boot({ withStorage, savedKey = null }) {
   ok('the app mounts without storage', r.nodes > 10, `${r.nodes} elements`);
   ok('it renders real text', r.text.length > 40, `${r.text.length} chars`);
   ok('it does not throw on boot', r.log.length === 0, r.log.join(' | '));
-  ok('it says storage is blocked', /blocking local storage/i.test(r.text), 'no warning shown');
+  /* The wording changed when the folder fallback landed: the old message said
+     the app would forget everything, which is no longer the whole truth. What
+     matters is that the user is TOLD storage is blocked and given a way out. */
+  ok(
+    'it says storage is blocked',
+    /blocking (its own )?(local )?storage/i.test(r.text),
+    'no warning shown'
+  );
+  ok(
+    'it offers a way to keep the work',
+    /choose a folder|export/i.test(r.text),
+    'the message is a dead end'
+  );
   ok('no unhandled rejections', r.rejections.length === 0, r.rejections.join(' | '));
   ok('it shows the key screen', /key/i.test(r.text));
 }

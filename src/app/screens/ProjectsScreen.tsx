@@ -1,10 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '../store';
-import { listProjects, deleteProject, renameProject, type ProjectRow } from '../../lib/db';
+import {
+  listProjects,
+  deleteProject,
+  renameProject,
+  folderSupported,
+  chooseFolder,
+  type ProjectRow,
+} from '../../lib/db';
 import { KIND_META } from '../../lib/spec';
 
 export default function ProjectsScreen() {
   const { patch, startNew, hasKey } = useApp();
+  const storageBlocked = useApp((s) => s.storageBlocked);
+  const folderMode = useApp((s) => s.folderMode);
+  const folderLabel = useApp((s) => s.folderLabel);
+  const [folderErr, setFolderErr] = useState<string | null>(null);
   const [rows, setRows] = useState<ProjectRow[] | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -21,7 +32,23 @@ export default function ProjectsScreen() {
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, folderMode]);
+
+  /**
+   * The "your sites live in a folder" path, reachable from this screen too —
+   * not only from Setup. Someone who dismissed the notice on first run should
+   * not have to go back through the key screen to fix it.
+   */
+  async function pickFolder() {
+    setFolderErr(null);
+    try {
+      const name = await chooseFolder();
+      if (!name) return;
+      patch({ folderMode: true, folderLabel: name });
+    } catch (e) {
+      setFolderErr(e instanceof Error ? e.message : 'The folder could not be opened.');
+    }
+  }
 
   function open(row: ProjectRow) {
     patch({
@@ -69,6 +96,42 @@ export default function ProjectsScreen() {
               {hasKey ? 'Build a site' : 'Add a key, then build'}
             </button>
           </div>
+
+          {/* Without a store, this list will never fill up. Say so here rather
+              than letting the user build something and watch it vanish. */}
+          {storageBlocked && !folderMode && (
+            <div className="err" style={{ textAlign: 'left', marginTop: 18 }}>
+              <div>
+                <strong>This browser is blocking its own storage</strong>
+                {folderSupported() ? (
+                  <>
+                    {' '}
+                    Nothing you build will be kept. Choose a folder and the app will save your key
+                    and your sites there instead, as plain JSON files.
+                  </>
+                ) : (
+                  <>
+                    {' '}
+                    Nothing you build will be kept, and this browser will not hand out a folder
+                    either. Export each finished site to a file — that always works.
+                  </>
+                )}
+              </div>
+              {folderSupported() && (
+                <button className="btn btn-sm btn-primary" onClick={pickFolder} style={{ marginTop: 10 }}>
+                  Choose a folder
+                </button>
+              )}
+              {folderErr && <div style={{ marginTop: 8 }}>{folderErr}</div>}
+            </div>
+          )}
+
+          {folderMode && (
+            <p className="tiny dim" style={{ marginTop: 14 }}>
+              Saving to <strong>{folderLabel}</strong> — settings, sites and pages as JSON files in
+              the folder you chose.
+            </p>
+          )}
         </div>
       </div>
     );
@@ -92,7 +155,9 @@ export default function ProjectsScreen() {
         </button>
         <div className="spacer" />
         <span className="note">
-          {rows === null ? 'Loading…' : `${rows.length} saved`}
+          {rows === null
+            ? 'Loading…'
+            : `${rows.length} saved${folderMode ? ` in ${folderLabel}` : ' in this browser'}`}
         </span>
       </div>
 

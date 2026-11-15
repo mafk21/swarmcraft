@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../store';
-import { getApiKey, setApiKey, clearApiKey } from '../../lib/db';
+import {
+  getApiKey,
+  setApiKey,
+  clearApiKey,
+  chooseFolder,
+  folderSupported,
+} from '../../lib/db';
 import { testKey } from '../../lib/gemini';
+import { rememberKeyForSession } from './BuildScreen';
 import { shortStamp } from '../../lib/version';
 
 export default function KeyScreen() {
@@ -10,7 +17,11 @@ export default function KeyScreen() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const storageBlocked = useApp((s) => s.storageBlocked);
+  const folderLabel = useApp((s) => s.folderLabel);
+  const folderMode = useApp((s) => s.folderMode);
   const [savedMask, setSavedMask] = useState<string | null>(null);
+  const [folderBusy, setFolderBusy] = useState(false);
+  const [folderErr, setFolderErr] = useState<string | null>(null);
 
   useEffect(() => {
     getApiKey()
@@ -62,10 +73,67 @@ export default function KeyScreen() {
       return;
     }
 
-    await setApiKey(trimmed);
-    patch({ hasKey: true });
+    /* Saving the key is the first thing that needs a store. If IndexedDB is
+       blocked and no folder has been chosen, this used to throw and the button
+       did nothing at all — the user saw "this browser is blocking local storage"
+       and no way past it. Now the failure is caught and said in words, and the
+       way past it is the folder button below. */
+    /* Whatever the store does, this tab can build with it. */
+    rememberKeyForSession(trimmed);
+    try {
+      await setApiKey(trimmed);
+      patch({ hasKey: true });
+    } catch {
+      setBusy(false);
+      if (folderMode) {
+        /* a folder is open and the write still failed: that is worth knowing */
+        setMsg({ ok: false, text: 'The key works, but it could not be written to the folder. Check the folder is still there, then try again.' });
+        return;
+      }
+      if (!folderSupported()) {
+        /* no store AND no picker: carry on in memory rather than dead-ending.
+           The note at the bottom of this screen says what that costs. */
+        patch({ hasKey: true });
+        setMsg({ ok: true, text: 'The key works, and this tab will use it. This browser will not let the app remember it — export each site when it is finished.' });
+        window.setTimeout(() => next(), 1200);
+        return;
+      }
+      setMsg({ ok: false, text: 'The key works, but there is nowhere to keep it yet. Choose a folder below and the app will save it there.' });
+      return;
+    }
     setMsg({ ok: true, text: 'Key works. Taking you to your sites.' });
     window.setTimeout(() => next(), 420);
+  }
+
+  /**
+   * Pick a folder. Called directly from onClick with nothing awaited in front
+   * of it: showDirectoryPicker needs the user's gesture and an await spends it.
+   */
+  async function pickFolder() {
+    setFolderErr(null);
+    setFolderBusy(true);
+    try {
+      const name = await chooseFolder();
+      if (!name) {
+        /* the dialog was closed — a choice, not an error */
+        setFolderBusy(false);
+        return;
+      }
+      patch({ folderMode: true, folderLabel: name });
+      /* the key that failed to save a moment ago can go in now */
+      if (key.trim()) {
+        try {
+          await setApiKey(key.trim());
+        } catch {
+          /* the folder write failed; the message below covers it */
+        }
+      }
+      setMsg({ ok: true, text: `Saving to “${name}”. This browser blocks its own storage, so the app keeps its files in the folder you chose.` });
+    } catch (e) {
+      setFolderErr(e instanceof Error ? e.message : 'The folder could not be opened.');
+    } finally {
+      setFolderBusy(false);
+    }
   }
 
   function useSaved() {
@@ -157,21 +225,66 @@ export default function KeyScreen() {
           )}
         </form>
 
-        {storageBlocked && (
+        {storageBlocked && !folderMode && (
           <div className="err">
             <div>
-              <strong>This browser is blocking local storage</strong>
-              The key can still be used for this session, but it will not be remembered and a
-              finished site cannot be saved in the browser. A private window or a strict
-              tracking-protection setting usually causes this. Exporting a finished site to a
-              file still works.
+              <strong>This browser is blocking its own storage</strong>
+              A private window or a strict tracking-protection setting usually does this. The app
+              still works — but unless it has somewhere to put things, it will forget your key and
+              your sites when the tab closes.
+              {folderSupported() ? (
+                <>
+                  {' '}
+                  Give it a folder and it saves there instead, as plain JSON files you can open
+                  yourself.
+                </>
+              ) : (
+                <>
+                  {' '}
+                  This browser cannot hand out a folder either, so for now: keep the key somewhere
+                  safe, and export each site to a file when it is finished.
+                </>
+              )}
             </div>
           </div>
         )}
 
+        {storageBlocked && folderSupported() && (
+          <div className="field">
+            {folderMode ? (
+              <p className="hint">
+                Saving to <strong>{folderLabel}</strong> — settings, sites and pages, as JSON in the
+                folder you picked. Images stay in this tab and travel with an exported HTML file.
+              </p>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={pickFolder}
+                  disabled={folderBusy}
+                >
+                  {folderBusy ? 'Opening…' : 'Choose a folder to save into'}
+                </button>
+                <p className="hint">
+                  You will be asked which folder — pick an empty one, or make a new one called
+                  something like <span className="mono">swarmcraft</span>. Everything stays on this
+                  machine.
+                </p>
+              </>
+            )}
+            {folderErr && (
+              <div className="err">
+                <div>{folderErr}</div>
+              </div>
+            )}
+          </div>
+        )}
+
         <p className="key-note">
-          Nothing you type is stored anywhere but this machine. Sites you build live in IndexedDB
-          and export as plain HTML files you own.
+          Nothing you type is stored anywhere but this machine. Sites you build live in{' '}
+          {folderMode ? 'the folder you chose' : 'IndexedDB'} and export as plain HTML files you
+          own.
         </p>
 
         {/* Which commit is on screen. If this does not match the latest commit,
