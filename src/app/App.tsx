@@ -58,7 +58,7 @@ export default function App() {
               title="Your sites"
             >
               <Mark />
-              swarmsmith
+              swarmcraft
             </button>
             {showRail && (
             <nav className="stepper">

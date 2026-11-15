@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="docs/media/wordmark.svg" alt="Swarmsmith — website builder" height="120">
+<img src="docs/media/wordmark.svg" alt="Swarmcraft — website builder" height="120">
 
 **Write a brief. Nine cursors draw your website. Keep the HTML.**
 
-[![tests](https://github.com/mafk21/swarm-builder/actions/workflows/test.yml/badge.svg)](https://github.com/mafk21/swarm-builder/actions/workflows/test.yml)
+[![tests](https://github.com/mafk21/swarmcraft/actions/workflows/test.yml/badge.svg)](https://github.com/mafk21/swarmcraft/actions/workflows/test.yml)
 [![MIT](https://img.shields.io/badge/licence-MIT-111)](LICENSE)
 [![node](https://img.shields.io/badge/node-22.12%2B-111)](package.json)
 [![no backend](https://img.shields.io/badge/backend-none-111)](#what-it-does-not-do)
@@ -34,8 +34,8 @@ account.
 **1 · Get the code and start it**
 
 ```bash
-git clone https://github.com/mafk21/swarm-builder.git
-cd swarm-builder
+git clone https://github.com/mafk21/swarmcraft.git
+cd swarmcraft
 npm install
 npm run dev
 ```
@@ -80,7 +80,7 @@ The same commands work in PowerShell, Command Prompt or Git Bash.
   dependencies and must install; a corporate proxy blocking npm is the usual reason.
   The tests do not need them.
 - **Something else is broken** — `npm run doctor` prints what this build expects.
-  [Issues](https://github.com/mafk21/swarm-builder/issues) are open.
+  [Issues](https://github.com/mafk21/swarmcraft/issues) are open.
 
 </details>
 

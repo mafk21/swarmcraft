@@ -1,4 +1,4 @@
-# swarmsmith — Build Plan
+# swarmcraft — Build Plan
 
 **Status:** planning · **Date:** 2026-11-12 · **Build order:** frontend first
 **Platform:** **a locally-run desktop web app** — not an extension
@@ -185,7 +185,7 @@ A single locally-run app. No browser extension, no store, no background worker.
 
 ### 4.4 Why a local app (and not an extension)
 
-Because there is nothing for it to extend. Swarmsmith never reads the page
+Because there is nothing for it to extend. Swarmcraft never reads the page
 you're browsing, never injects anything, never needs host permissions. It
 generates a site from an interview and builds it on its own canvas. An extension
 would be pure overhead:
@@ -226,10 +226,10 @@ Seven steps. Each is a full screens-worth of spec: layout, states, copy, rules.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  swarmsmith                                                  │
+│  swarmcraft                                                  │
 │                                                              │
 │  Connect Gemini                                              │
-│  Swarmsmith runs entirely on your machine. It needs one      │
+│  Swarmcraft runs entirely on your machine. It needs one      │
 │  Gemini API key to write your site. Nothing is sent         │
 │  anywhere else.                                              │
 │                                                              │
@@ -248,7 +248,7 @@ Seven steps. Each is a full screens-worth of spec: layout, states, copy, rules.
 └──────────────────────────────────────────────────────────────┘
 ```
 
-- Key stored in **IndexedDB** under `swarmsmith.key`, never in the bundle, never logged.
+- Key stored in **IndexedDB** under `swarmcraft.key`, never in the bundle, never logged.
 - "Test & save" makes one cheap call; reports latency and the resolved model name.
 - Failure states: invalid key · quota exhausted · network · unsupported model. Each with its own message, not a generic error.
 - The trust paragraph is not decoration — it's the single biggest objection to a local app holding a key. Address it on screen one.
@@ -709,7 +709,11 @@ Non-negotiable:
 
 ## 13. Open questions
 
-1. **Name.** `swarmsmith` is the working title. Final?
+1. ~~**Name.**~~ **Answered: `Swarmcraft`.** *Swarm* is the nine cursors, borrowed
+   on purpose from Califa's project and credited in NOTICE; *craft* says worked by
+   hand rather than generated, and is plainer and harder than `-smith`.
+   `Ninewright` was the runner-up. *Nine icons on a ring* was rejected as the
+   stock AI-brand shape.
 2. **Sound.** On by default with a persistable mute (matching the reference), or off by default? My recommendation: **on**, because the audio is a large part of why the reference videos land — and the mute is one click.
 3. **The nine Muses as the cursor labels?** This is the one place the roster becomes visible to a user. Alternative: neutral names (*Builder 1–9*), or no labels. My recommendation: keep the Muses — named cursors are literally what makes the reference look like a design tool.
 

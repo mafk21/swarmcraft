@@ -59,7 +59,7 @@ async function main() {
 
   /* woff2 → ttf, one at a time: wawoff2 is not concurrency-safe and a corrupt
      buffer makes resvg fall back to a system face without a word. */
-  const dir = mkdtempSync(join(tmpdir(), 'swarmsmith-logo-'));
+  const dir = mkdtempSync(join(tmpdir(), 'swarmcraft-logo-'));
   const names = { serif: 'InstrumentSerif', sans: 'InstrumentSans', mono: 'JetBrainsMono' };
   const fontFiles = [];
   for (const key of Object.keys(CARD_FONTS)) {

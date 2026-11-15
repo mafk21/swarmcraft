@@ -130,7 +130,7 @@ ok('the written file is a complete document',
   !!wrote && /<!doctype html>/i.test(wrote) && /<\/html>/i.test(wrote),
   'the export must be a standalone page');
 ok('the app itself is not referenced in it',
-  !!wrote && !/localhost|swarmsmith\.|vite/.test(wrote),
+  !!wrote && !/localhost|swarmcraft\.|vite/.test(wrote),
   'the exported page must not point back at the app');
 
 console.log(fail === 0 ? '\nDOWNLOAD OK — the export button produces a real file inside the click' : `\n${fail} FAILED`);

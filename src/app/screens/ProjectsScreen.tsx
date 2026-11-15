@@ -58,7 +58,7 @@ export default function ProjectsScreen() {
           <p className="eyebrow">Nothing built yet</p>
           <h1>No sites yet</h1>
           <p>
-            Swarmsmith builds one page at a time. Answer a few questions, choose what to include,
+            Swarmcraft builds one page at a time. Answer a few questions, choose what to include,
             then watch nine cursors build it. Everything stays in this browser.
           </p>
           <div className="row" style={{ gap: 10 }}>

@@ -5,7 +5,13 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import type { SiteSpec, SiteKind } from './spec';
 
-const DB_NAME = 'swarmsmith';
+/* The product was called swarmsmith until it was published. Anyone who ran it
+   under that name has their key and their sites in a database with the old name,
+   so the first open copies them across before the new database is used for real.
+   Cheap now, and the alternative is a user opening the app to find every site
+   they built gone. */
+const DB_NAME = 'swarmcraft';
+const LEGACY_DB_NAME = 'swarmsmith';
 const DB_VERSION = 2;
 
 export type ProjectRow = {
@@ -72,10 +78,54 @@ export function storageAvailable(): boolean {
   }
 }
 
+/**
+ * Copy a database written by the old name into the new one, once.
+ *
+ * `indexedDB.databases()` is not in every browser, so this is best-effort: when
+ * it is missing, or the old database does not exist, it does nothing and the app
+ * starts with the new one empty. It never deletes the old database — a rename
+ * should not be able to destroy the only copy of someone's work.
+ */
+async function migrateLegacyDb(): Promise<void> {
+  try {
+    const list = await indexedDB.databases?.();
+    if (!list?.some((d) => d.name === LEGACY_DB_NAME)) return;
+
+    const marker = `${LEGACY_DB_NAME}:migrated`;
+    if (localStorage.getItem(marker)) return;
+
+    const legacy = await new Promise<IDBDatabase>((ok, no) => {
+      const req = indexedDB.open(LEGACY_DB_NAME);
+      req.onsuccess = () => ok(req.result);
+      req.onerror = () => no(req.error);
+    });
+
+    const target = await openDB<Schema>(DB_NAME, DB_VERSION);
+    for (const name of Array.from(legacy.objectStoreNames) as (keyof Schema)[]) {
+      if (!target.objectStoreNames.contains(name)) continue;
+      const rows = await new Promise<unknown[]>((ok, no) => {
+        const req = legacy.transaction(name, 'readonly').objectStore(name).getAll();
+        req.onsuccess = () => ok(req.result);
+        req.onerror = () => no(req.error);
+      });
+      /* `put`, not `add`: if a row already exists in the new database it wins,
+         because it is the one this version of the app has been writing to. */
+      for (const row of rows) await target.put(name, row as never);
+    }
+    legacy.close();
+    target.close();
+    localStorage.setItem(marker, '1');
+  } catch {
+    /* No migration is better than a broken boot. The new database stands. */
+  }
+}
+
 function db() {
   if (!storageAvailable()) return Promise.reject(new StorageUnavailable());
   if (!dbp) {
-    dbp = openDB<Schema>(DB_NAME, DB_VERSION, {
+    dbp = (async () => {
+      await migrateLegacyDb();
+      return openDB<Schema>(DB_NAME, DB_VERSION, {
       upgrade(d) {
         if (!d.objectStoreNames.contains('settings'))
           d.createObjectStore('settings', { keyPath: 'key' });
@@ -89,7 +139,8 @@ function db() {
           store.createIndex('projectId', 'projectId');
         }
       },
-    });
+      });
+    })();
     // a failed open must not poison every later call
     dbp.catch(() => {
       dbp = null;

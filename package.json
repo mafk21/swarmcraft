@@ -1,5 +1,5 @@
 {
-  "name": "swarmsmith",
+  "name": "swarmcraft",
   "private": false,
   "version": "0.1.0",
   "type": "module",
@@ -47,12 +47,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mafk21/swarm-builder.git"
+    "url": "git+https://github.com/mafk21/swarmcraft.git"
   },
   "bugs": {
-    "url": "https://github.com/mafk21/swarm-builder/issues"
+    "url": "https://github.com/mafk21/swarmcraft/issues"
   },
-  "homepage": "https://github.com/mafk21/swarm-builder#readme",
+  "homepage": "https://github.com/mafk21/swarmcraft#readme",
   "license": "MIT",
   "keywords": [
     "website-builder",

@@ -35,7 +35,7 @@ const ARROW = 'M0 0 L0 5.6 L1.45 4.2 L2.45 6.4 L3.6 5.85 L2.6 3.75 L4.6 3.5 Z';
  * @param {string} opts.ink         the line colour; also the cursor when not multi
  * @param {boolean} opts.title      include <title>
  */
-export function markSvg({ size = 24, mode = 'bare', multi = true, ink = '#f5f3ef', title = 'Swarmsmith' } = {}) {
+export function markSvg({ size = 24, mode = 'bare', multi = true, ink = '#f5f3ef', title = 'Swarmcraft' } = {}) {
   const L = 3.2; // left
   const T = 3.2; // top
   const R = 20.8; // right
@@ -66,7 +66,7 @@ export function markSvg({ size = 24, mode = 'bare', multi = true, ink = '#f5f3ef
 }
 
 export function faviconSvg() {
-  return markSvg({ size: 64, mode: 'tile', title: 'Swarmsmith' });
+  return markSvg({ size: 64, mode: 'tile', title: 'Swarmcraft' });
 }
 
 /**
@@ -74,9 +74,9 @@ export function faviconSvg() {
  * The name is set in the app's own serif — a separate logotype would be a
  * second voice in a product that only has one.
  */
-export function wordmarkSvg({ height = 44, ink = '#f5f3ef', sub = '#8a8780', head = 'Swarmsmith', tail = 'website builder' } = {}) {
+export function wordmarkSvg({ height = 44, ink = '#f5f3ef', sub = '#8a8780', head = 'Swarmcraft', tail = 'website builder' } = {}) {
   const markSize = Math.round(height * 0.92);
-  const gap = Math.round(height * 0.34);
+  const gap = Math.round(height * 0.38);
   const nameSize = height * 0.66;
   const tailSize = height * 0.2;
   const textX = markSize + gap;

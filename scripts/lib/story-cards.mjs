@@ -76,7 +76,7 @@ const esc = (s) =>
 export const CARDS = {
   /** The main one: what the thing is, in one look. */
   launch: {
-    eyebrow: 'Swarmsmith · a website builder that draws',
+    eyebrow: 'Swarmcraft · a website builder that draws',
     claim: 'Write a brief.\nWatch it get built.',
     sub: 'Nine cursors draw your website — dragging the boxes out, typing the headline, stamping the cards — then the real page fades in underneath.',
     proof: ['One request · 80s hard limit', 'No backend · no account', 'MIT · runs on your machine'],
@@ -87,7 +87,7 @@ export const CARDS = {
 
   /** The one that states the rule rather than the feature. */
   guarantee: {
-    eyebrow: 'Swarmsmith · the one guarantee',
+    eyebrow: 'Swarmcraft · the one guarantee',
     claim: 'The model\nnever writes CSS.',
     sub: 'The spec is strict and has no field for a colour, a size or a class. The worst page it can make is plain — never gradients, never three identical cards.',
     proof: ['Enforced by the schema', 'Not a prompt request', '27 test suites'],

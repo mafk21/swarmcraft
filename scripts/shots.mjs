@@ -125,7 +125,7 @@ async function seedKey(page, base) {
   await page.goto(base, { waitUntil: 'domcontentloaded' });
   await page.evaluate(async (key) => {
     const db = await new Promise((ok, no) => {
-      const req = indexedDB.open('swarmsmith', 2);
+      const req = indexedDB.open('swarmcraft', 2);
       req.onupgradeneeded = () => {
         const d = req.result;
         if (!d.objectStoreNames.contains('settings')) d.createObjectStore('settings', { keyPath: 'key' });
